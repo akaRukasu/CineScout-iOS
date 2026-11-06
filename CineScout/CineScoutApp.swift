@@ -28,7 +28,8 @@ enum Secrets {
 struct Media: Identifiable, Decodable {
     let Id: String?
     let Name: String?
-    let Type: String?
+    let mediaType: String?
+    enum CodingKeys: String, CodingKey { case Id, Name, ProductionYear, Overview, ProviderIds; case mediaType = "Type" }
     let ProductionYear: Int?
     let Overview: String?
     let ProviderIds: [String: String]?
@@ -250,10 +251,10 @@ struct LibraryView: View {
                 }
                 ForEach(filtered) { item in
                     HStack {
-                        Image(systemName: item.Type == "Series" ? "tv" : "film").foregroundStyle(.purple)
+                        Image(systemName: item.mediaType == "Series" ? "tv" : "film").foregroundStyle(.purple)
                         VStack(alignment: .leading) {
                             Text(item.title)
-                            Text("\(item.ProductionYear.map(String.init) ?? "—") · \(item.Type ?? "")").font(.caption).foregroundStyle(.secondary)
+                            Text("\(item.ProductionYear.map(String.init) ?? "—") · \(item.mediaType ?? "")").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
