@@ -32,6 +32,7 @@ struct DetailView: View {
     @State private var sending = false
     @State private var seerrError: String?
     @State private var receipt: SeerrClient.Receipt?
+    @State private var refreshingReceipt = false
     @State private var showsSettings = false
     @State private var showsRequest = false
     @State private var selectedSeasons = Set<Int>()
@@ -53,22 +54,16 @@ struct DetailView: View {
     }
 
     private var requestStatus: String? {
-        if let receipt {
-            switch receipt.status {
-            case 1: return "Demande n°\(receipt.id) en attente d’approbation"
-            case 2: return "Demande n°\(receipt.id) approuvée"
-            default: return "Demande n°\(receipt.id) envoyée"
-            }
-        }
-        if seerrMedia?.mediaInfo?.status == 5 || (item.kind == "movie" && model.owned.contains(item.key)) {
-            return "Déjà disponible"
-        }
+        if let receipt { return receipt.label }
+        if seerrMedia?.mediaInfo?.status == 6 { return "Titre bloqué dans Seerr" }
         if item.kind == "movie" {
+            if seerrMedia?.mediaInfo?.status == 5 || model.owned.contains(item.key) { return "Déjà disponible" }
+            if let request = seerrMedia?.mediaInfo?.requests?.first(where: { $0.is4k != true && [1, 2, 4].contains($0.status) }) {
+                if let id = request.id { return SeerrClient.Receipt(id: id, status: request.status).label }
+                return request.status == 4 ? "Demande en échec côté Seerr" : "Déjà demandé"
+            }
             if seerrMedia?.mediaInfo?.status == 2 { return "Demande en attente d’approbation" }
             if seerrMedia?.mediaInfo?.status == 3 { return "Demande en cours" }
-            if seerrMedia?.mediaInfo?.requests?.contains(where: { $0.is4k != true && (1...2).contains($0.status) }) == true {
-                return "Déjà demandé"
-            }
         }
         if item.kind == "tv", let seasons = seerrMedia?.seasons, seasons.contains(where: { $0.seasonNumber > 0 }),
            availableSeasons.isEmpty {
@@ -79,7 +74,8 @@ struct DetailView: View {
 
     private var availableSeasons: [Int] {
         guard let seerrMedia else { return [] }
-        return Set((seerrMedia.seasons ?? []).map(\.seasonNumber))
+        let seasons = (seerrMedia.seasons ?? []).filter { $0.episodeCount != 0 }
+        return Set(seasons.map(\.seasonNumber))
             .subtracting(seerrMedia.blockedSeasons).filter { $0 > 0 }.sorted()
     }
 
@@ -92,6 +88,9 @@ struct DetailView: View {
                         Text(genres.map(\.name).joined(separator: "  ·  "))
                             .font(.subheadline.weight(.semibold)).foregroundStyle(.purple.opacity(0.95))
                     }
+                    LabeledContent(item.kind == "tv" ? "Première diffusion" : "Date de sortie",
+                                   value: item.releaseDateText ?? "Date non annoncée")
+                        .font(.subheadline)
                     if model.owned.contains(item.key) {
                         Label("Dans ta bibliothèque Jellyfin", systemImage: "checkmark.circle.fill")
                             .font(.subheadline).foregroundStyle(.green)
@@ -152,7 +151,7 @@ struct DetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(item.kind == "tv" ? "SÉRIE" : "FILM").font(.caption2.bold()).tracking(2.5)
                         Text(item.display).font(.title.bold()).lineLimit(3)
-                        Text([item.year.isEmpty ? nil : item.year, duration,
+                        Text([duration,
                               item.vote_average.flatMap { $0 > 0 ? "★ \($0.formatted(.number.precision(.fractionLength(1))))" : nil }]
                             .compactMap { $0 }.joined(separator: "   ·   "))
                             .font(.subheadline).foregroundStyle(.white.opacity(0.85))
@@ -165,8 +164,21 @@ struct DetailView: View {
 
     @ViewBuilder private var requestControl: some View {
         if let requestStatus {
-            Label(requestStatus, systemImage: "checkmark.circle.fill")
-                .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+            Label(requestStatus, systemImage: "paperplane.circle")
+                .font(.subheadline.weight(.semibold))
+            if let client = try? model.seerrClient(), seerrMedia != nil {
+                HStack {
+                    Link(destination: client.requestsURL) {
+                        Label("Voir dans Seerr", systemImage: "arrow.up.right.square")
+                    }
+                    if receipt != nil {
+                        Button("Actualiser", systemImage: "arrow.clockwise") {
+                            Task { await refreshReceipt() }
+                        }.disabled(refreshingReceipt)
+                    }
+                }.buttonStyle(.bordered)
+            }
+            if let seerrError { Text(seerrError).font(.footnote).foregroundStyle(.orange) }
         } else if model.seerrAddress.isEmpty {
             Button("Configurer Seerr", systemImage: "paperplane") { showsSettings = true }
                 .buttonStyle(.bordered)
@@ -254,6 +266,9 @@ struct DetailView: View {
                             VStack(alignment: .leading, spacing: 5) {
                                 Poster(path: suggestion.poster_path)
                                 Text(suggestion.display).font(.caption.bold()).lineLimit(2)
+                                if let release = suggestion.releaseDateText {
+                                    Text(release).font(.caption2).foregroundStyle(.secondary)
+                                }
                                 if model.owned.contains(suggestion.key) {
                                     Label("Sur Jellyfin", systemImage: "checkmark.circle").font(.caption2).foregroundStyle(.green)
                                 }
@@ -288,6 +303,15 @@ struct DetailView: View {
         }
     }
 
+    private func refreshReceipt() async {
+        guard let receipt, !refreshingReceipt else { return }
+        refreshingReceipt = true
+        seerrError = nil
+        defer { refreshingReceipt = false }
+        do { self.receipt = try await model.seerrClient().receipt(id: receipt.id) }
+        catch { seerrError = error.localizedDescription }
+    }
+
     private func sendRequest() async {
         guard !sending else { return }
         sending = true
@@ -298,10 +322,16 @@ struct DetailView: View {
             let current = try await client.details(kind: item.kind, id: item.id)
             seerrMedia = current
             let seasons = selectedSeasons.intersection(availableSeasons).sorted()
-            guard requestStatus == nil, item.kind == "movie" || !seasons.isEmpty else {
-                showsRequest = false
+            if let requestStatus {
+                seerrError = requestStatus
                 return
             }
+            if item.kind == "tv" && Set(seasons) != selectedSeasons {
+                selectedSeasons = Set(seasons)
+                seerrError = "La disponibilité des saisons a changé. Vérifie la sélection avant de confirmer."
+                return
+            }
+            guard item.kind == "movie" || !seasons.isEmpty else { return }
             receipt = try await client.submit(.init(mediaType: item.kind, mediaId: item.id,
                                                     seasons: item.kind == "tv" ? seasons : nil))
             showsRequest = false

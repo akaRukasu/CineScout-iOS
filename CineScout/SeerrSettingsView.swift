@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SeerrSettingsView: View {
     @EnvironmentObject private var model: LibraryModel
+    private let currentAddress = "https://seerr-akarukasu.astra.usbx.me"
     @State private var address = ""
     @State private var key = ""
     @State private var checking = false
@@ -14,6 +15,13 @@ struct SeerrSettingsView: View {
                 TextField("https://seerr.exemple.fr", text: $address)
                     .keyboardType(.URL).textContentType(.URL)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
+                if address != currentAddress {
+                    Button("Utiliser mon Seerr sur Astra") {
+                        address = currentAddress
+                        key = ""
+                        message = ""
+                    }
+                }
                 SecureField("Clé API Seerr", text: $key)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 Button {
@@ -42,7 +50,7 @@ struct SeerrSettingsView: View {
         .navigationTitle("Seerr")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            address = model.seerrAddress
+            address = model.seerrAddress.isEmpty ? currentAddress : model.seerrAddress
             key = model.seerrKey
         }
     }

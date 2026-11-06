@@ -63,7 +63,7 @@ struct TMItem: Identifiable, Codable {
     let release_date: String?
     let first_air_date: String?
     var display: String { title ?? name ?? "Sans titre" }
-    var year: String { String((release_date ?? first_air_date ?? "").prefix(4)) }
+    var releaseDateText: String? { ReleaseDate.french(kind == "tv" ? first_air_date : release_date) }
 }
 
 @MainActor
@@ -436,8 +436,8 @@ struct DiscoverView: View {
                                         LinearGradient(colors: [.clear, .black.opacity(0.95)], startPoint: .center, endPoint: .bottom)
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text(featured.display).font(.title2.bold()).lineLimit(2)
-                                            Text([featured.kind == "tv" ? "Série" : "Film", featured.year]
-                                                .filter { !$0.isEmpty }.joined(separator: " · "))
+                                            Text([featured.kind == "tv" ? "Série" : "Film", featured.releaseDateText]
+                                                .compactMap { $0 }.joined(separator: " · "))
                                                 .font(.caption.weight(.medium))
                                             if let overview = featured.overview, !overview.isEmpty {
                                                 Text(overview).font(.caption).lineLimit(2).foregroundStyle(.white.opacity(0.85))
@@ -490,8 +490,10 @@ struct DiscoverView: View {
                                         VStack(alignment: .leading, spacing: 5) {
                                             Poster(path: item.poster_path)
                                             Text(item.display).font(.subheadline.weight(.semibold)).lineLimit(2)
+                                            if let release = item.releaseDateText {
+                                                Text(release).font(.caption).foregroundStyle(.secondary)
+                                            }
                                             HStack {
-                                                if !item.year.isEmpty { Text(item.year) }
                                                 if let score = item.vote_average, score > 0 {
                                                     Label(score.formatted(.number.precision(.fractionLength(1))), systemImage: "star.fill")
                                                 }
@@ -715,7 +717,8 @@ struct WishlistView: View {
                             Poster(path: item.poster_path).frame(width: 44)
                             VStack(alignment: .leading) {
                                 Text(item.display).font(.headline)
-                                Text(item.kind == "tv" ? "Série · \(item.year)" : "Film · \(item.year)")
+                                Text([item.kind == "tv" ? "Série" : "Film", item.releaseDateText]
+                                    .compactMap { $0 }.joined(separator: " · "))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
