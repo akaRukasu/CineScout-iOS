@@ -1,17 +1,20 @@
 # CinéScout iOS
 
-Application SwiftUI iOS 17+ de découverte de films et séries reliée à Jellyfin.
+Application native SwiftUI pour iOS 17 et versions ultérieures.
 
-## Fonctions
-- Connexion Jellyfin par identifiant/mot de passe, serveur prérempli.
-- Bibliothèque films et séries, recherche, affiches, détails.
-- Découverte TMDb (clé API personnelle facultative), filtres par type, genre, années, note.
-- Détection des titres déjà présents par identifiant TMDb.
-- Liste de souhaits locale.
+## Première utilisation
 
-## Compiler
-GitHub Actions > Build iOS IPA > Run workflow. Le résultat est une **IPA non signée**, non installable telle quelle sur iPhone. Il faut la signer avec un certificat/profil Apple valide ou utiliser un outil de signature compatible.
+1. Dans **Réglages**, connectez-vous à Jellyfin. Le serveur est prérempli. Dans **Jellyfin**, **Actualiser** relance la synchronisation.
+2. Dans les [réglages API de TMDb](https://www.themoviedb.org/settings/api), récupérez votre jeton de lecture ou votre clé API v3. Saisissez cette valeur dans **Réglages**, puis enregistrez.
+3. Dans **Découvrir**, choisissez films ou séries, appliquez vos filtres, puis explorez le catalogue. L’option **Selon mes goûts** utilise les genres de la bibliothèque, en donnant plus de poids aux titres vus, favoris ou ajoutés aux envies. Un genre choisi manuellement a priorité.
+4. Les titres sont comparés par type de média et identifiant TMDb. Un titre sans identifiant TMDb dans Jellyfin ne peut pas être rapproché automatiquement. Les envies restent sur l’appareil.
 
-Le mot de passe Jellyfin n'est jamais stocké. Le jeton Jellyfin et la clé TMDb sont conservés dans le trousseau iOS. Les requêtes vont directement vers les serveurs configurés.
+Le mot de passe Jellyfin sert à ouvrir la session. Le jeton Jellyfin et la clé TMDb sont conservés dans le trousseau iOS. CinéScout utilise TMDb et n’est ni approuvé ni certifié par TMDb.
 
-Pour TMDb, créez une clé API sur https://www.themoviedb.org/settings/api puis renseignez-la dans Réglages. CinéScout n'est pas affilié à TMDb.
+## Compilation et installation
+
+Dans GitHub Actions, ouvrez **Build iOS IPA** et choisissez **Run workflow**. Les mises à jour de `main` déclenchent également un build. Dans un run réussi, téléchargez **CineScout-unsigned-IPA** et extrayez `CineScout-unsigned.ipa`.
+
+L’IPA pour iPhone est non signée. Sous Windows, [installez AltStore Classic avec AltServer](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows). Activez le **Mode développeur** sur l’iPhone, puis ouvrez **My Apps → +** dans AltStore Classic et sélectionnez l’IPA dans Fichiers. Gardez AltServer actif pendant l’installation. Avec un compte Apple gratuit, rafraîchissez la signature avant son expiration.
+
+Pour ouvrir le projet dans Xcode, installez XcodeGen et exécutez `xcodegen generate`. Sélectionnez votre équipe de signature et votre iPhone dans Xcode.
