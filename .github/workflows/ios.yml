@@ -9,6 +9,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Check Seerr request encoding and season availability
+        run: |
+          swiftc CineScout/Seerr.swift Checks/SeerrChecks.swift -o "$RUNNER_TEMP/cinescout-seerr-checks"
+          "$RUNNER_TEMP/cinescout-seerr-checks"
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate project

@@ -97,6 +97,21 @@ final class LibraryModel: ObservableObject {
         return id
     }()
     @Published var tmdbKey = Secrets.get("tmdb")
+    @Published private(set) var seerrAddress = UserDefaults.standard.string(forKey: "seerrAddress") ?? ""
+    @Published private(set) var seerrRevision = 0
+    private(set) var seerrKey = Secrets.get("seerrKey")
+
+    func seerrClient() throws -> SeerrClient {
+        try SeerrClient(address: seerrAddress, key: seerrKey)
+    }
+
+    func saveSeerr(address: String, key: String) {
+        seerrKey = key
+        Secrets.set(key, for: "seerrKey")
+        seerrAddress = address
+        UserDefaults.standard.set(address, forKey: "seerrAddress")
+        seerrRevision += 1
+    }
     private var token = Secrets.get("jellyfin")
     private var userId = UserDefaults.standard.string(forKey: "userId") ?? ""
     @Published private(set) var owned = Set<String>()
@@ -104,6 +119,8 @@ final class LibraryModel: ObservableObject {
     private var jellyfinAuthorization: String {
         "MediaBrowser Client=\"CineScout\", Device=\"iPhone\", DeviceId=\"\(deviceID)\", Version=\"1.0\""
     }
+    var hasTasteProfile: Bool { !preferredGenres(for: mediaType).isEmpty }
+
     private func preferredGenres(for kind: String) -> [Int] {
         let aliases: [String: Int] = [
             "action": kind == "tv" ? 10759 : 28, "adventure": kind == "tv" ? 10759 : 12,
@@ -269,26 +286,10 @@ final class LibraryModel: ObservableObject {
             if !originalLanguage.isEmpty { query.append(.init(name: "with_original_language", value: originalLanguage)) }
             parts.queryItems = query + [.init(name: "page", value: "1")]
         }
-        guard let url = parts.url else { return }
         busy = true
         defer { busy = false }
-        var request = URLRequest(url: url)
-        if key.count == 32 && key.allSatisfy(\.isHexDigit) {
-            parts.queryItems = (parts.queryItems ?? []) + [.init(name: "api_key", value: key)]
-            guard let apiURL = parts.url else { return }
-            request.url = apiURL
-            parts.queryItems?.removeAll { $0.name == "api_key" }
-        } else {
-            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        }
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard status == 200 else {
-                discoveryMessage = [401, 403].contains(status) ? "TMDb a refusé le jeton ou la clé API." : "TMDb indisponible (HTTP \(status))."
-                return
-            }
-            let page = try JSONDecoder().decode(TMPage.self, from: data)
+            let page: TMPage = try await fetchTMDb(parts, key: key)
             if !more { discoveries = [] }
             var seen = Set(discoveries.map(\.key))
             discoveries.append(contentsOf: page.results.filter { seen.insert($0.key).inserted })
@@ -299,7 +300,38 @@ final class LibraryModel: ObservableObject {
             nextDiscovery = hasMore ? parts : nil
             discoveryToken = key
             discoveryMessage = ""
-        } catch { discoveryMessage = "TMDb : \(error.localizedDescription)" }
+        } catch { discoveryMessage = error.localizedDescription }
+    }
+
+    func metadata(for item: TMItem) async throws -> TitleMetadata {
+        var parts = URLComponents()
+        parts.scheme = "https"
+        parts.host = "api.themoviedb.org"
+        parts.path = "/3/\(item.kind)/\(item.id)"
+        parts.queryItems = [.init(name: "language", value: "fr-FR"),
+                            .init(name: "append_to_response", value: "credits,recommendations,similar")]
+        return try await fetchTMDb(parts, key: tmdbKey)
+    }
+
+    private func fetchTMDb<T: Decodable>(_ endpoint: URLComponents, key: String) async throws -> T {
+        var parts = endpoint
+        let legacyKey = key.count == 32 && key.allSatisfy(\.isHexDigit)
+        if legacyKey { parts.queryItems = (parts.queryItems ?? []) + [.init(name: "api_key", value: key)] }
+        guard let url = parts.url else { throw URLError(.badURL) }
+        var request = URLRequest(url: url)
+        if !legacyKey { request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            throw TMDbError(message: [401, 403].contains(status)
+                            ? "TMDb a refusé le jeton ou la clé API." : "TMDb indisponible (HTTP \(status)).")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private struct TMDbError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
     }
 
     func isWishlisted(_ item: TMItem) -> Bool { wishlist.contains { $0.key == item.key } }
@@ -394,15 +426,24 @@ struct DiscoverView: View {
                     }
 
                     if let featured = visible.first {
+                        Text(model.personalized && model.genre.isEmpty && model.hasTasteProfile
+                             ? "Sélection pour toi" : "À la une")
+                            .font(.title2.bold()).accessibilityAddTraits(.isHeader)
                         NavigationLink { DetailView(item: featured) } label: {
                             Poster(path: featured.backdrop_path ?? featured.poster_path, landscape: true)
                                 .overlay(alignment: .bottomLeading) {
                                     ZStack(alignment: .bottomLeading) {
                                         LinearGradient(colors: [.clear, .black.opacity(0.95)], startPoint: .center, endPoint: .bottom)
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text("À LA UNE").font(.caption2.bold()).tracking(2)
                                             Text(featured.display).font(.title2.bold()).lineLimit(2)
-                                            if !featured.year.isEmpty { Text(featured.year).font(.caption) }
+                                            Text([featured.kind == "tv" ? "Série" : "Film", featured.year]
+                                                .filter { !$0.isEmpty }.joined(separator: " · "))
+                                                .font(.caption.weight(.medium))
+                                            if let overview = featured.overview, !overview.isEmpty {
+                                                Text(overview).font(.caption).lineLimit(2).foregroundStyle(.white.opacity(0.85))
+                                            }
+                                            Label("Voir la fiche", systemImage: "arrow.right.circle")
+                                                .font(.caption.bold()).padding(.top, 3)
                                         }
                                         .padding(16)
                                     }
@@ -607,31 +648,6 @@ struct DiscoveryFilters: View {
     }
 }
 
-struct DetailView: View {
-    @EnvironmentObject var model: LibraryModel
-    let item: TMItem
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if let backdrop = item.backdrop_path {
-                    Poster(path: backdrop, landscape: true)
-                } else {
-                    Poster(path: item.poster_path).frame(maxWidth: 180).frame(maxWidth: .infinity)
-                }
-                Text(item.display).font(.largeTitle.bold())
-                Text("\(item.year) · \(item.vote_average ?? 0, specifier: "%.1f")/10").foregroundStyle(.secondary)
-                if model.owned.contains(item.key) { Label("Déjà sur Jellyfin", systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
-                Button {
-                    model.toggle(item)
-                } label: {
-                    Label(model.isWishlisted(item) ? "Retirer de ma liste" : "Ajouter à ma liste", systemImage: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
-                }.buttonStyle(.borderedProminent)
-                Text("Synopsis").font(.title3.bold()).accessibilityAddTraits(.isHeader)
-                Text(item.overview.flatMap { $0.isEmpty ? nil : $0 } ?? "Aucun synopsis disponible.").foregroundStyle(.secondary)
-            }.padding()
-        }.navigationTitle(item.display).navigationBarTitleDisplayMode(.inline)
-    }
-}
 struct LibraryView: View {
     @EnvironmentObject var model: LibraryModel
     let openSettings: () -> Void
@@ -777,6 +793,14 @@ struct SettingsView: View {
                     Text("Catalogue TMDb")
                 } footer: {
                     Text("La clé permet d’explorer des films et séries en dehors de ta bibliothèque.")
+                }
+                Section("Demandes de films et séries") {
+                    NavigationLink {
+                        SeerrSettingsView()
+                    } label: {
+                        Label(model.seerrAddress.isEmpty ? "Configurer Seerr" : "Gérer la connexion Seerr",
+                              systemImage: "paperplane")
+                    }
                 }
                 Section { Text("Données TMDb · Application indépendante, non approuvée par TMDb.").font(.caption) }
             }
