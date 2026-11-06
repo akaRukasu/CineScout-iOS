@@ -183,9 +183,9 @@ struct DiscoverView: View {
                     }.pickerStyle(.segmented)
                     ScrollView(.horizontal) {
                         HStack {
-                            ForEach(genres, id: \.1) { item in
-                                Button(item.0) { model.genre = item.1 } .buttonStyle(.bordered)
-                                    .tint(model.genre == item.1 ? .purple : .gray)
+                            ForEach(genres.indices, id: \.self) { index in
+                                Button(genres[index].0) { model.genre = genres[index].1 }.buttonStyle(.bordered)
+                                    .tint(model.genre == genres[index].1 ? .purple : .gray)
                             }
                         }
                     }.scrollIndicators(.hidden)
