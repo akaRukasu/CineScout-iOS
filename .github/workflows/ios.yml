@@ -29,7 +29,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.akarukasu.cinescout
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app/Info.plist"
-          xcrun lipo -verify_arch arm64 "$app/CineScout"
+          xcrun lipo "$app/CineScout" -verify_arch arm64
           shasum -a 256 CineScout-unsigned.ipa | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
