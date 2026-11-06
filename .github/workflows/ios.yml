@@ -28,6 +28,8 @@ jobs:
           app=Payload/CineScout.app
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.akarukasu.cinescout
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app/Info.plist"
           xcrun lipo "$app/CineScout" -verify_arch arm64
           shasum -a 256 CineScout-unsigned.ipa | tee -a "$GITHUB_STEP_SUMMARY"
