@@ -349,6 +349,7 @@ struct RootView: View {
     enum Tab: Hashable { case discover, library, wishlist, settings, search }
     @EnvironmentObject var model: LibraryModel
     @State private var tab = Tab.discover
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Group {
@@ -358,6 +359,7 @@ struct RootView: View {
                 tabs
             }
         }
+        .toolbarColorScheme(colorScheme, for: .tabBar)
         .task {
             await model.refresh()
             if !model.tmdbKey.isEmpty && model.discoveries.isEmpty { await model.discover() }

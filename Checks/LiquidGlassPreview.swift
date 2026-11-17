@@ -53,6 +53,7 @@ private struct RouletteMotionPreview: View {
     let titles: [TMItem]
     @State private var phase = RoulettePhase.idle
     @State private var winner: TMItem?
+    @State private var spinID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -70,7 +71,11 @@ private struct RouletteMotionPreview: View {
             .background { CinemaBackground() }
             .navigationTitle("Roulette")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
+            .onOpenURL { url in
+                if url.scheme == "cinescout-preview", url.host == "spin" { spinID = UUID() }
+            }
+            .task(id: spinID) {
+                guard spinID != nil else { return }
                 phase = .spinning(.now)
                 do {
                     try await Task.sleep(for: .seconds(3))

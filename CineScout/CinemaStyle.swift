@@ -44,7 +44,7 @@ struct RouletteEntryCard: View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 9) {
                 Label("Roulette", systemImage: "die.face.5.fill").font(.title2.bold())
-                Text("Jusqu’à 10 découvertes, à ton rythme.")
+                Text("Jusqu’à 10 titres à découvrir.")
                     .font(.subheadline).foregroundStyle(.white.opacity(0.76))
                 Image(systemName: "arrow.right")
                     .font(.body.bold())

@@ -4,6 +4,7 @@ set -euo pipefail
 preview_root="$RUNNER_TEMP/cinescout-liquid-glass"
 screenshots="$1"
 mkdir -p "$preview_root" "$screenshots"
+swiftc Checks/CheckScreenshot.swift -o "$preview_root/check-screenshot"
 cp -R CineScout project.yml "$preview_root/"
 sed -i '' '/^@main$/d' "$preview_root/CineScout/CineScoutApp.swift"
 cp Checks/LiquidGlassPreview.swift "$preview_root/CineScout/"
@@ -13,6 +14,8 @@ device=$(xcrun simctl list devices available -j | jq -r '
     | .value[] | select(.name == "iPhone 17 Pro") | .udid] | last // empty
 ')
 test -n "$device"
+trap 'xcrun simctl spawn "$device" log show --last 8m --style compact --predicate '\''process == "CineScout"'\'' > "$screenshots/simulator.log" 2>&1 || true
+find "$HOME/Library/Logs/DiagnosticReports" -name "CineScout*" -exec cp {} "$screenshots/" \; 2>/dev/null || true' EXIT
 xcrun simctl boot "$device"
 
 cd "$preview_root"
@@ -21,40 +24,57 @@ xcodebuild -project CineScout.xcodeproj -scheme CineScout -configuration Debug \
   -sdk iphonesimulator -destination "generic/platform=iOS Simulator" -derivedDataPath build \
   ARCHS="$(uname -m)" ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
 xcrun simctl bootstatus "$device" -b
-xcrun simctl install "$device" build/Build/Products/Debug-iphonesimulator/CineScout.app
+
+preview_app=build/Build/Products/Debug-iphonesimulator/CineScout.app
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$preview_app/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$preview_app/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$preview_app/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cinescout-preview" "$preview_app/Info.plist"
+xcrun simctl install "$device" "$preview_app"
 xcrun simctl status_bar "$device" override --time 9:41 --dataNetwork wifi --wifiMode active \
   --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState discharging --batteryLevel 100
 
+capture() {
+  local path="$screenshots/$1"
+  for attempt in 1 2 3 4; do
+    xcrun simctl io "$device" screenshot "$path"
+    if "$preview_root/check-screenshot" "$path"; then return 0; fi
+    sleep 5
+  done
+  echo "The simulator did not render $1."
+  return 1
+}
+
 xcrun simctl ui "$device" appearance light
 xcrun simctl launch "$device" com.akarukasu.cinescout
-sleep 6
-xcrun simctl io "$device" screenshot "$screenshots/Decouvrir-clair.png"
+sleep 8
+capture Decouvrir-clair.png
+
+xcrun simctl terminate "$device" com.akarukasu.cinescout
 xcrun simctl ui "$device" appearance dark
-sleep 2
-xcrun simctl io "$device" screenshot "$screenshots/Decouvrir-sombre.png"
+xcrun simctl launch "$device" com.akarukasu.cinescout
+sleep 8
+capture Decouvrir-sombre.png
+
+for screen in detail catalog-search classics roulette; do
+  xcrun simctl terminate "$device" com.akarukasu.cinescout
+  xcrun simctl launch "$device" com.akarukasu.cinescout "--$screen"
+  sleep 8
+  capture "$screen.png"
+done
+
 xcrun simctl terminate "$device" com.akarukasu.cinescout
-xcrun simctl launch "$device" com.akarukasu.cinescout --detail
-sleep 6
-xcrun simctl io "$device" screenshot "$screenshots/Fiche-sombre.png"
-xcrun simctl terminate "$device" com.akarukasu.cinescout
-xcrun simctl launch "$device" com.akarukasu.cinescout --catalog-search
-sleep 3
-xcrun simctl io "$device" screenshot "$screenshots/Recherche-sombre.png"
-xcrun simctl terminate "$device" com.akarukasu.cinescout
-xcrun simctl launch "$device" com.akarukasu.cinescout --classics
-sleep 4
-xcrun simctl io "$device" screenshot "$screenshots/A-redecouvrir-sombre.png"
-xcrun simctl terminate "$device" com.akarukasu.cinescout
-xcrun simctl launch "$device" com.akarukasu.cinescout --roulette
-sleep 3
-xcrun simctl io "$device" screenshot "$screenshots/Roulette-sombre.png"
-xcrun simctl terminate "$device" com.akarukasu.cinescout
+xcrun simctl launch "$device" com.akarukasu.cinescout --roulette-motion
+sleep 8
+capture Roulette-prete.png
+
 xcrun simctl io "$device" recordVideo --codec=h264 "$screenshots/Roulette-animation.mp4" &
 recorder=$!
-xcrun simctl launch "$device" com.akarukasu.cinescout --roulette-motion
+sleep 1
+xcrun simctl openurl "$device" "cinescout-preview://spin"
 sleep 2
-xcrun simctl io "$device" screenshot "$screenshots/Roulette-animation.png"
-sleep 6
-xcrun simctl io "$device" screenshot "$screenshots/Roulette-resultats.png"
+capture Roulette-animation.png
+sleep 5
+capture Roulette-resultats.png
 kill -INT "$recorder"
 wait "$recorder"

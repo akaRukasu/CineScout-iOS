@@ -17,6 +17,8 @@ struct DiscoverView: View {
                 .background { CinemaBackground() }
                 .navigationTitle("Découvrir")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbarColorScheme(colorScheme, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
                 .onChange(of: model.mediaType) { _, _ in
                     model.genre = ""
                     Task { await model.discover() }

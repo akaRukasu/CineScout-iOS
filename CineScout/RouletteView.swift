@@ -317,7 +317,9 @@ extension LibraryModel {
                 return candidates
             }
             var ranked = Roulette.rank(allCandidates.filter { !owns($0) }, excluding: considered)
-            preview += ranked.prefix(12)
+            for era in Roulette.Era.allCases {
+                preview += ranked.filter { Roulette.era(for: $0, now: now) == era }.prefix(4)
+            }
             while results.count < count, let candidate = Roulette.next(from: ranked, after: results, formats: formats, schedule: schedule, now: now) {
                 try Task.checkCancellation()
                 ranked.removeAll { $0.key == candidate.key }
@@ -331,7 +333,9 @@ extension LibraryModel {
             }
             if results.count >= count { break }
         }
-        return RouletteDraw(titles: results, candidates: Array(preview.prefix(18)))
+        var previewIDs = Set<String>()
+        let reel = (results + preview.shuffled()).filter { previewIDs.insert($0.key).inserted }
+        return RouletteDraw(titles: results, candidates: Array(reel.prefix(18)))
     }
 
     private func drawPage(_ query: Roulette.Query, spread: Int) async throws -> [TMItem] {

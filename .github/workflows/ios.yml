@@ -74,10 +74,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.visual_check
         run: bash Checks/capture-liquid-glass.sh "$RUNNER_TEMP/cinescout-screenshots"
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' && inputs.visual_check
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.visual_check
         with:
           name: CineScout-Liquid-Glass-iOS-26
           path: |
             ${{ runner.temp }}/cinescout-screenshots/*.png
             ${{ runner.temp }}/cinescout-screenshots/*.mp4
+            ${{ runner.temp }}/cinescout-screenshots/*.log
+            ${{ runner.temp }}/cinescout-screenshots/*.ips
           if-no-files-found: error
