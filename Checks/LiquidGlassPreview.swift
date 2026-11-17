@@ -53,7 +53,6 @@ private struct RouletteMotionPreview: View {
     let titles: [TMItem]
     @State private var phase = RoulettePhase.idle
     @State private var winner: TMItem?
-    @State private var spinID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -71,13 +70,15 @@ private struct RouletteMotionPreview: View {
             .background { CinemaBackground() }
             .navigationTitle("Roulette")
             .navigationBarTitleDisplayMode(.inline)
-            .onOpenURL { url in
-                if url.scheme == "cinescout-preview", url.host == "spin" { spinID = UUID() }
-            }
-            .task(id: spinID) {
-                guard spinID != nil else { return }
-                phase = .spinning(.now)
+            .task {
                 do {
+                    let trigger = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                        .appendingPathComponent("roulette-start")
+                    while !FileManager.default.fileExists(atPath: trigger.path) {
+                        try await Task.sleep(for: .milliseconds(200))
+                    }
+                    try Task.checkCancellation()
+                    phase = .spinning(.now)
                     try await Task.sleep(for: .seconds(3))
                     winner = titles.first
                     phase = .settling(.now)

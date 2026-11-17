@@ -26,10 +26,6 @@ xcodebuild -project CineScout.xcodeproj -scheme CineScout -configuration Debug \
 xcrun simctl bootstatus "$device" -b
 
 preview_app=build/Build/Products/Debug-iphonesimulator/CineScout.app
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$preview_app/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$preview_app/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$preview_app/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cinescout-preview" "$preview_app/Info.plist"
 xcrun simctl install "$device" "$preview_app"
 xcrun simctl status_bar "$device" override --time 9:41 --dataNetwork wifi --wifiMode active \
   --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState discharging --batteryLevel 100
@@ -64,6 +60,9 @@ for screen in detail catalog-search classics roulette; do
 done
 
 xcrun simctl terminate "$device" com.akarukasu.cinescout
+app_container=$(xcrun simctl get_app_container "$device" com.akarukasu.cinescout data)
+mkdir -p "$app_container/Documents"
+rm -f "$app_container/Documents/roulette-start"
 xcrun simctl launch "$device" com.akarukasu.cinescout --roulette-motion
 sleep 8
 capture Roulette-prete.png
@@ -71,7 +70,7 @@ capture Roulette-prete.png
 xcrun simctl io "$device" recordVideo --codec=h264 "$screenshots/Roulette-animation.mp4" &
 recorder=$!
 sleep 1
-xcrun simctl openurl "$device" "cinescout-preview://spin"
+touch "$app_container/Documents/roulette-start"
 sleep 2
 capture Roulette-animation.png
 sleep 5

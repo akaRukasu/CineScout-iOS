@@ -390,7 +390,7 @@ struct Poster: View {
         Rectangle().fill(Color(uiColor: .tertiarySystemFill))
             .aspectRatio(ratio ?? (landscape ? 16.0/9 : 2.0/3), contentMode: .fit)
             .overlay {
-                AsyncImage(url: path.flatMap { URL(string: "https://image.tmdb.org/t/p/\(landscape ? "w780" : "w500")" + $0) }) { phase in
+                AsyncImage(url: path.flatMap { URL(string: "https://image.tmdb.org/t/p/\(landscape ? "w1280" : "w500")" + $0) }) { phase in
                     if let image = phase.image {
                         GeometryReader { size in
                             image.resizable().scaledToFill()

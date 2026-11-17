@@ -3,6 +3,7 @@ import SwiftUI
 struct RouletteView: View {
     @EnvironmentObject private var model: LibraryModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     let openSettings: () -> Void
     @AppStorage("rouletteHistory") private var historyData = Data()
     @State private var formats = Set(RouletteFormat.allCases)
@@ -23,6 +24,9 @@ struct RouletteView: View {
 
     private var canDraw: Bool { Roulette.canDraw(formats: formats, genres: genres) }
     private var recentYear: Int { Calendar.current.component(.year, from: .now) - 4 }
+    private var stageCandidates: [TMItem] {
+        reelCandidates.isEmpty ? Array(model.discoveries.filter(model.canSuggest).prefix(18)) : reelCandidates
+    }
 
     private var status: String {
         if isCheckingLibrary { return "Vérification de tes médiathèques" }
@@ -41,7 +45,6 @@ struct RouletteView: View {
                     drawControl {
                         withAnimation(reduceMotion ? nil : .smooth) { proxy.scrollTo("reel", anchor: .top) }
                         winner = nil
-                        reelCandidates = []
                         phase = .spinning(.now)
                         drawID = UUID()
                     }
@@ -67,7 +70,7 @@ struct RouletteView: View {
     private var rouletteScroll: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
-                RouletteStage(candidates: reelCandidates, winner: winner, phase: phase, status: status)
+                RouletteStage(candidates: stageCandidates, winner: winner, phase: phase, status: status)
                     .id("reel")
 
                 if let note {
@@ -174,14 +177,18 @@ struct RouletteView: View {
     private func drawControl(start: @escaping () -> Void) -> some View {
         VStack(spacing: 6) {
             if !model.hasJellyfinSession || model.tmdbKey.isEmpty {
-                Button("Connecter mes services", systemImage: "link", action: openSettings)
-                    .controlSize(.large).glassButtonStyle(prominent: true)
+                Button(action: openSettings) {
+                    Label("Connecter mes services", systemImage: "link")
+                        .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+                }
+                .controlSize(.large).glassButtonStyle(prominent: true)
                 Text(model.hasJellyfinSession ? "TMDb permet de rechercher les titres." :
                         "Jellyfin permet d’exclure tes contenus déjà présents.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             } else {
                 Button(action: start) {
                     Label(drawID == nil ? "Faire tourner la roulette" : "Tirage en cours", systemImage: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                         .frame(maxWidth: .infinity, minHeight: 27)
                 }
                 .buttonBorderShape(.capsule)
