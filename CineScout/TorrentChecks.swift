@@ -94,7 +94,7 @@ struct TorrentIndicator: View {
         if checks.address.isEmpty {
             if detailed {
                 Button("Configurer Prowlarr", systemImage: "magnifyingglass") { showsSettings = true }
-                    .buttonStyle(.bordered)
+                    .glassButtonStyle()
             }
         } else {
             switch checks.state(for: item) {
@@ -123,7 +123,7 @@ struct TorrentIndicator: View {
                     Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
                     Button("Relancer la recherche", systemImage: "arrow.clockwise") {
                         checks.check(item, retry: true)
-                    }.buttonStyle(.bordered)
+                    }.glassButtonStyle()
                 } else {
                     Label("Vérification impossible", systemImage: "exclamationmark.circle")
                         .foregroundStyle(.secondary)

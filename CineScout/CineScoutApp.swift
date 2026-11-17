@@ -357,7 +357,7 @@ struct RootView: View {
             DiscoverView { tab = .settings }
                 .tabItem { Label("Découvrir", systemImage: "sparkles") }.tag(Tab.discover)
             LibraryView { tab = .settings }
-                .tabItem { Label("Jellyfin", systemImage: "play.rectangle.stack") }.tag(Tab.library)
+                .tabItem { Label("Jellyfin", systemImage: "rectangle.stack") }.tag(Tab.library)
             WishlistView { tab = .discover }
                 .tabItem { Label("Envies", systemImage: "bookmark") }.tag(Tab.wishlist)
             SettingsView { tab = .discover }

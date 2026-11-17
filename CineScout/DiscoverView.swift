@@ -3,6 +3,7 @@ import SwiftUI
 struct DiscoverView: View {
     @EnvironmentObject private var model: LibraryModel
     @Environment(\.dynamicTypeSize) private var dynamicType
+    @Environment(\.colorScheme) private var colorScheme
     let openSettings: () -> Void
     @State private var showsFilters = false
 
@@ -15,6 +16,7 @@ struct DiscoverView: View {
             discoveryWithControls
                 .background(Color(uiColor: .systemGroupedBackground))
                 .navigationTitle("Découvrir")
+                .navigationBarTitleDisplayMode(.inline)
                 .onChange(of: model.mediaType) { _, _ in
                     model.genre = ""
                     Task { await model.discover() }
@@ -66,11 +68,16 @@ struct DiscoverView: View {
 
     private func scopeButton(_ title: String, kind: String) -> some View {
         let selected = model.mediaType == kind
-        return Button(title) { model.mediaType = kind }
-            .buttonBorderShape(.capsule)
-            .glassButtonStyle(prominent: selected)
-            .accessibilityAddTraits(selected ? .isSelected : [])
-            .disabled(model.busy)
+        let foreground = selected ? (colorScheme == .dark ? Color.black : Color.white) : Color.primary
+        return Button {
+            model.mediaType = kind
+        } label: {
+            Text(title).foregroundStyle(foreground)
+        }
+        .buttonBorderShape(.capsule)
+        .glassButtonStyle(prominent: selected)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .disabled(model.busy)
     }
 
     private var catalogue: some View {
