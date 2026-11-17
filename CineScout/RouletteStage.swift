@@ -146,6 +146,8 @@ struct RouletteStage: View {
     }
 
     private func loadArtwork() async {
+        let retainedPaths = Set(artworkPaths)
+        artwork = artwork.filter { retainedPaths.contains($0.key) }
         let paths = artworkPaths.filter { artwork[$0] == nil }
         await withTaskGroup(of: (String, Data?).self) { group in
             for path in paths {
