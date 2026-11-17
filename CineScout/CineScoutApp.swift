@@ -25,7 +25,6 @@ enum Secrets {
     }
 }
 
-struct JellyfinItems: Decodable { let Items: [Media]; let TotalRecordCount: Int? }
 struct AuthResponse: Decodable {
     let AccessToken: String
     let User: Account
@@ -46,7 +45,6 @@ final class LibraryModel: ObservableObject {
     @Published var genre = ""
     @Published var minYear = ""
     @Published var minRating = 0.0
-    @Published var hideOwnedSeries = true
     @Published var maxYear = ""
     @Published var originalLanguage = ""
     @Published var sort = "popularity.desc"
@@ -56,6 +54,11 @@ final class LibraryModel: ObservableObject {
     private var nextDiscovery: URLComponents?
     private var discoveryToken = ""
     @Published private(set) var syncing = false
+    @Published private(set) var synchronizedLibraries: [JellyfinInventory.Library] = []
+    @Published private(set) var lastVerifiedSync: Date?
+    private var syncTask: Task<Void, Never>?
+    private(set) var inventoryRevision = UUID()
+    var hasJellyfinSession: Bool { !token.isEmpty && !userId.isEmpty }
     private let deviceID: String = {
         if let existing = UserDefaults.standard.string(forKey: "deviceID") { return existing }
         let id = UUID().uuidString
@@ -92,12 +95,21 @@ final class LibraryModel: ObservableObject {
 
     func owns(_ item: TMItem) -> Bool { ownership.contains(item) }
 
-    func canSuggest(_ item: TMItem) -> Bool {
-        (item.kind == "tv" && !hideOwnedSeries) || !owns(item)
+    func canSuggest(_ item: TMItem) -> Bool { !owns(item) }
+
+    func requiresExternalIDCheck(_ item: TMItem) -> Bool {
+        ownership.hasExternalIDs(kind: item.kind)
+    }
+
+    func owns(_ item: TMItem, externalIDs: TMDbExternalIDs) -> Bool {
+        ownership.contains(kind: item.kind, externalIDs: externalIDs)
     }
 
     private func clearOwnership() {
         ownership = LibraryOwnership()
+        lastVerifiedSync = nil
+        synchronizedLibraries = []
+        inventoryRevision = UUID()
         UserDefaults.standard.removeObject(forKey: "jellyfinOwnership")
     }
 
@@ -183,51 +195,44 @@ final class LibraryModel: ObservableObject {
         } catch { message = "Erreur de connexion : \(error.localizedDescription)" }
     }
     func refresh() async {
-        guard !syncing, !token.isEmpty, !userId.isEmpty else { return }
+        if let syncTask { await syncTask.value; return }
+        guard hasJellyfinSession else { return }
+
         let sessionToken = token
-        guard var parts = URLComponents(string: sessionServer + "/Items") else { return }
+        let client = JellyfinLibraryClient(server: sessionServer, userID: userId,
+                                          authorization: "\(jellyfinAuthorization), Token=\"\(sessionToken)\"")
         syncing = true
-        defer { syncing = false }
-        var items: [Media] = []
-        do {
-            while true {
-                parts.queryItems = [
-                    .init(name: "UserId", value: userId),
-                    .init(name: "Recursive", value: "true"),
-                    .init(name: "IncludeItemTypes", value: "Movie,Series"),
-                    .init(name: "Fields", value: "ProviderIds,Genres,OriginalTitle"),
-                    .init(name: "EnableUserData", value: "true"),
-                    .init(name: "SortBy", value: "SortName"),
-                    .init(name: "StartIndex", value: String(items.count)),
-                    .init(name: "Limit", value: "500")
-                ]
-                guard let url = parts.url else { return }
-                var request = URLRequest(url: url)
-                request.setValue("\(jellyfinAuthorization), Token=\"\(sessionToken)\"", forHTTPHeaderField: "Authorization")
-                let (data, response) = try await URLSession.shared.data(for: request)
+        lastVerifiedSync = nil
+        let task = Task {
+            defer {
+                syncing = false
+                syncTask = nil
+            }
+            do {
+                let inventory = try await client.inventory()
                 guard token == sessionToken else { return }
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                if status == 401 || status == 403 {
+                library = inventory.titles
+                synchronizedLibraries = inventory.libraries
+                ownership = LibraryOwnership(inventory.titles)
+                if let data = try? JSONEncoder().encode(ownership) {
+                    UserDefaults.standard.set(data, forKey: "jellyfinOwnership")
+                }
+                inventoryRevision = UUID()
+                lastVerifiedSync = .now
+                connected = true
+                message = ""
+            } catch {
+                guard token == sessionToken else { return }
+                if let failure = error as? JellyfinLibraryClient.Failure, case .http(401) = failure {
                     logout()
                     message = "Session Jellyfin expirée. Reconnecte-toi."
-                    return
+                } else {
+                    message = "Bibliothèque : \(error.localizedDescription)"
                 }
-                guard status == 200 else { message = "Synchronisation Jellyfin indisponible (HTTP \(status))."; return }
-                let page = try JSONDecoder().decode(JellyfinItems.self, from: data)
-                items.append(contentsOf: page.Items)
-                if page.Items.isEmpty || items.count >= (page.TotalRecordCount ?? Int.max) ||
-                    (page.TotalRecordCount == nil && page.Items.count < 500) { break }
             }
-            library = items
-            ownership = LibraryOwnership(items)
-            if let data = try? JSONEncoder().encode(ownership) {
-                UserDefaults.standard.set(data, forKey: "jellyfinOwnership")
-            }
-            connected = true
-            message = ""
-        } catch {
-            if token == sessionToken { message = "Bibliothèque : \(error.localizedDescription)" }
         }
+        syncTask = task
+        await task.value
     }
 
     func discover(more: Bool = false) async {
@@ -331,6 +336,7 @@ final class LibraryModel: ObservableObject {
     }
 
     func logout() {
+        syncTask?.cancel()
         token = ""
         Secrets.set("", for: "jellyfin")
         connected = false

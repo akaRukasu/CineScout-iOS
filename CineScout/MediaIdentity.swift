@@ -35,6 +35,7 @@ struct TMItem: Identifiable, Codable {
     let overview: String?
     let poster_path: String?
     let vote_average: Double?
+    let vote_count: Int?
     let release_date: String?
     let first_air_date: String?
     let editorialYear: Int?
@@ -64,33 +65,87 @@ enum TitleMatch {
 struct LibraryOwnership: Codable {
     private var ids = Set<String>()
     private var titlesWithoutID = Set<String>()
+    private var externalIDs: Set<String>?
+    private var titlesWithoutYear: Set<String>?
 
     init(_ media: [Media] = []) {
         for item in media {
             let kind: String
             switch item.mediaType {
-            case "Movie": kind = "movie"
+            case "Movie", "Video": kind = "movie"
             case "Series": kind = "tv"
             default: continue
             }
             let tmdb = item.ProviderIds?.first { $0.key.caseInsensitiveCompare("Tmdb") == .orderedSame }
             if let rawID = tmdb?.value, let id = Int(rawID.trimmingCharacters(in: .whitespaces)), id > 0 {
                 ids.insert("\(kind):\(id)")
-            } else if let year = item.ProductionYear, year > 0 {
-                for title in [item.Name, item.OriginalTitle].compactMap({ $0 }) {
-                    if let key = Self.titleKey(kind: kind, title: title, year: year) {
-                        titlesWithoutID.insert(key)
+            } else {
+                if let year = item.ProductionYear, year > 0 {
+                    for title in [item.Name, item.OriginalTitle].compactMap({ $0 }) {
+                        if let key = Self.titleKey(kind: kind, title: title, year: year) {
+                            titlesWithoutID.insert(key)
+                        }
                     }
+                } else {
+                    for title in [item.Name, item.OriginalTitle].compactMap({ $0 }) {
+                        if let key = Self.titleWithoutYear(kind: kind, title: title) {
+                            if titlesWithoutYear == nil { titlesWithoutYear = [] }
+                            titlesWithoutYear?.insert(key)
+                        }
+                    }
+                }
+                let providers = item.ProviderIds ?? [:]
+                let external = providers.compactMap { key, value -> String? in
+                    guard let value else { return nil }
+                    switch key.lowercased() {
+                    case "imdb": return Self.externalKey(kind: kind, provider: "imdb", value: value)
+                    case "tvdb" where kind == "tv": return Self.externalKey(kind: kind, provider: "tvdb", value: value)
+                    default: return nil
+                    }
+                }
+                if !external.isEmpty {
+                    if externalIDs == nil { externalIDs = [] }
+                    externalIDs?.formUnion(external)
                 }
             }
         }
     }
 
+    func hasExternalIDs(kind: String) -> Bool {
+        externalIDs?.contains(where: { $0.hasPrefix(kind + ":") }) == true
+    }
+
+    func contains(kind: String, externalIDs known: TMDbExternalIDs) -> Bool {
+        let imdb = known.imdb_id.flatMap { Self.externalKey(kind: kind, provider: "imdb", value: $0) }
+        let tvdb = known.tvdb_id.flatMap { Self.externalKey(kind: kind, provider: "tvdb", value: String($0)) }
+        return [imdb, tvdb].compactMap { $0 }.contains { externalIDs?.contains($0) == true }
+    }
+
+    private static func externalKey(kind: String, provider: String, value: String) -> String? {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if provider == "imdb", text.hasPrefix("tt"), let id = Int(text.dropFirst(2)), id > 0 {
+            return "\(kind):imdb:\(id)"
+        }
+        if provider == "tvdb", let id = Int(text), id > 0 {
+            return "\(kind):tvdb:\(id)"
+        }
+        return nil
+    }
+
     func contains(_ item: TMItem) -> Bool {
         if ids.contains(item.key) { return true }
+        if let titlesWithoutYear,
+           item.titles.compactMap({ Self.titleWithoutYear(kind: item.kind, title: $0) })
+            .contains(where: titlesWithoutYear.contains) { return true }
         guard let year = item.year else { return false }
         return item.titles.compactMap { Self.titleKey(kind: item.kind, title: $0, year: year) }
             .contains(where: titlesWithoutID.contains)
+    }
+
+    private static func titleWithoutYear(kind: String, title: String) -> String? {
+        let words = TitleMatch.words(title)
+        guard words.count >= 2 else { return nil }
+        return "\(kind):" + words.joined(separator: " ")
     }
 
     private static func titleKey(kind: String, title: String, year: Int) -> String? {
@@ -98,4 +153,9 @@ struct LibraryOwnership: Codable {
         guard !words.isEmpty else { return nil }
         return "\(kind):\(year):" + words.joined(separator: " ")
     }
+}
+
+struct TMDbExternalIDs: Decodable {
+    let imdb_id: String?
+    let tvdb_id: Int?
 }

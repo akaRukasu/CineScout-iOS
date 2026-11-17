@@ -65,8 +65,8 @@ private struct JellyfinSettingsView: View {
     var body: some View {
         Form {
             Section {
-                if model.connected {
-                    Label("Jellyfin connecté", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                if model.hasJellyfinSession {
+                    Label(model.connected ? "Jellyfin connecté" : "Session Jellyfin enregistrée", systemImage: "person.crop.circle")
                     LabeledContent("Compte", value: model.username)
                     LabeledContent("Titres synchronisés", value: model.library.count.formatted())
                     Button("Se déconnecter", role: .destructive) { model.logout() }
@@ -81,7 +81,7 @@ private struct JellyfinSettingsView: View {
                     Button {
                         Task {
                             await model.login(password: password)
-                            if model.connected { password = "" }
+                            if model.hasJellyfinSession { password = "" }
                         }
                     } label: {
                         if model.busy || model.syncing {

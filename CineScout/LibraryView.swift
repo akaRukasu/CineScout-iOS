@@ -47,9 +47,17 @@ struct LibraryView: View {
                         Label(model.message, systemImage: "exclamationmark.circle")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
-                    if !model.connected && !model.syncing {
+                    if !model.hasJellyfinSession && !model.syncing {
                         Button("Configurer Jellyfin", systemImage: "link", action: openSettings)
                             .glassButtonStyle(prominent: true)
+                    }
+                }
+
+                if !model.synchronizedLibraries.isEmpty {
+                    Section("Médiathèques et vues") {
+                        ForEach(model.synchronizedLibraries) { library in
+                            LabeledContent(library.folder.name, value: library.count.formatted())
+                        }
                     }
                 }
 
@@ -81,7 +89,7 @@ struct LibraryView: View {
             .navigationTitle("Bibliothèque")
             .refreshable { await model.refresh() }
             .toolbar {
-                if model.connected {
+                if model.hasJellyfinSession {
                     Button("Actualiser", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
                         .disabled(model.syncing)
                 }

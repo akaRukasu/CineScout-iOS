@@ -29,7 +29,9 @@ struct LiquidGlassPreview: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if ProcessInfo.processInfo.arguments.contains("--catalog-search") {
+                if ProcessInfo.processInfo.arguments.contains("--roulette") {
+                    NavigationStack { RouletteView(openSettings: {}) }
+                } else if ProcessInfo.processInfo.arguments.contains("--catalog-search") {
                     CatalogSearchView(openSettings: {})
                 } else if ProcessInfo.processInfo.arguments.contains("--classics") {
                     NavigationStack { RecommendationView(section: .classics, openSettings: {}) }

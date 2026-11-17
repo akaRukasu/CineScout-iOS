@@ -91,6 +91,16 @@ struct DiscoverView: View {
                     featuredCard(featured)
                 }
 
+                NavigationLink {
+                    RouletteView(openSettings: openSettings)
+                } label: {
+                    Label("Roulette", systemImage: "die.face.5")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                }
+                .controlSize(.large)
+                .glassButtonStyle(prominent: true)
+
                 RecommendationLinks(openSettings: openSettings)
 
                 catalogueFeedback
@@ -232,7 +242,6 @@ struct DiscoveryFilters: View {
     @State private var language: String
     @State private var sort: String
     @State private var personalized: Bool
-    @State private var hideOwnedSeries: Bool
 
     init(model: LibraryModel) {
         self.model = model
@@ -243,7 +252,6 @@ struct DiscoveryFilters: View {
         _language = State(initialValue: model.originalLanguage)
         _sort = State(initialValue: model.sort)
         _personalized = State(initialValue: model.personalized)
-        _hideOwnedSeries = State(initialValue: model.hideOwnedSeries)
     }
 
     private var genres: [(String, String)] {
@@ -292,17 +300,12 @@ struct DiscoveryFilters: View {
                 }
                 Section {
                     Toggle("Selon mes goûts", isOn: $personalized).disabled(!genre.isEmpty)
-                    if model.mediaType == "tv" {
-                        Toggle("Masquer les séries déjà sur Jellyfin", isOn: $hideOwnedSeries)
-                    }
                 } footer: {
-                    Text(model.mediaType == "movie"
-                         ? "Les films déjà présents sur Jellyfin sont masqués."
-                         : "Les suggestions utilisent tes goûts quand tu laisses le genre sur Tous.")
+                    Text("Les films et séries déjà présents sur Jellyfin sont masqués.")
                 }
                 Button("Réinitialiser les filtres") {
                     genre = ""; minYear = ""; maxYear = ""; minRating = 0
-                    language = ""; sort = "popularity.desc"; personalized = true; hideOwnedSeries = true
+                    language = ""; sort = "popularity.desc"; personalized = true
                 }
             }
             .navigationTitle("Filtres")
@@ -318,7 +321,6 @@ struct DiscoveryFilters: View {
                         model.originalLanguage = language
                         model.sort = sort
                         model.personalized = personalized
-                        model.hideOwnedSeries = hideOwnedSeries
                         dismiss()
                         Task { await model.discover() }
                     }.disabled(!validYears || model.busy)

@@ -7,7 +7,7 @@ Application native SwiftUI pour iOS 17 et versions ultérieures, avec Liquid Gla
 1. Dans **Réglages → Jellyfin**, connectez-vous à votre serveur. Le serveur est prérempli. Dans **Jellyfin**, **Actualiser** relance la synchronisation.
 2. Dans les [réglages API de TMDb](https://www.themoviedb.org/settings/api), récupérez votre jeton de lecture ou votre clé API v3. Saisissez cette valeur dans **Réglages → TMDb**, puis enregistrez.
 3. Dans **Découvrir**, choisissez films ou séries, appliquez vos filtres, puis explorez le catalogue. L’option **Selon mes goûts** utilise les genres de la bibliothèque, en donnant plus de poids aux titres vus, favoris ou ajoutés aux envies. Un genre choisi manuellement a priorité.
-4. Les films présents dans Jellyfin sont exclus de Découvrir et des suggestions similaires. Le rapprochement utilise le type de média et l’identifiant TMDb, ou le titre et l’année si Jellyfin n’a pas cet identifiant. Les envies restent sur l’appareil.
+4. Les films et séries présents dans Jellyfin sont exclus de Découvrir et des suggestions similaires. Le rapprochement utilise le type de média et l’identifiant TMDb, ou le titre et l’année si Jellyfin n’a pas cet identifiant. Les envies restent sur l’appareil.
 
 Le logo Jellyfin identifie l’intégration. Il est fourni par le [projet Jellyfin](https://github.com/jellyfin/jellyfin-ux/blob/master/branding/SVG/icon-transparent.svg) sous [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 
@@ -18,6 +18,12 @@ Le mot de passe Jellyfin sert à ouvrir la session. Le jeton Jellyfin et la clé
 Dans **Rechercher**, saisis le titre français ou original et choisis **Tout**, **Films**, **Séries** ou **Animes**. La recherche inclut aussi les titres présents dans Jellyfin.
 
 Dans **Découvrir**, **Au cinéma** présente les sorties françaises des 35 derniers jours et **En streaming** permet de filtrer par plateforme. Les fiches détaillent les offres en France par type. Les disponibilités proviennent de JustWatch via TMDb. **À redécouvrir** présente des titres plus anciens, des notes de CinéScout et des liens vers les critiques publiées.
+
+## Roulette
+
+Dans **Découvrir → Roulette**, choisis **1**, **3**, **5** ou **10** suggestions, puis sélectionne un ou plusieurs formats et genres. Les notes et nombres de votes proviennent de TMDb. Le tirage privilégie les titres bien notés et répartit les choix entre les époques quand le catalogue le permet. L’historique local écarte les titres déjà tirés.
+
+Avant chaque tirage, CinéScout synchronise toutes les vues accessibles au compte Jellyfin, y compris les vues masquées, puis vérifie le catalogue global du même compte. Les identifiants TMDb, le titre et l’année ainsi que les identifiants IMDb et TVDb disponibles servent au rapprochement. Les dossiers auxquels le compte n’a pas accès restent hors de portée. Aucun tirage ne démarre si l’inventaire échoue.
 
 ## Disponibilité via Prowlarr
 

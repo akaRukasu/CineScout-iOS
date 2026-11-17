@@ -136,7 +136,7 @@ enum TMDbCatalog {
         ])
     }
 
-    private static func endpoint(_ path: String, _ query: [URLQueryItem] = []) -> URLComponents {
+    static func endpoint(_ path: String, _ query: [URLQueryItem] = []) -> URLComponents {
         var parts = URLComponents()
         parts.scheme = "https"
         parts.host = "api.themoviedb.org"

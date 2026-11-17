@@ -13,7 +13,7 @@ struct EditorialPick: Identifiable {
         item = TMItem(id: id, media_type: series ? "tv" : "movie", original_language: anime ? "ja" : nil,
                       genre_ids: anime ? [16] : nil, backdrop_path: nil, title: series ? nil : title,
                       name: series ? title : nil, original_title: nil, original_name: nil, overview: nil,
-                      poster_path: poster, vote_average: nil, release_date: nil, first_air_date: nil,
+                      poster_path: poster, vote_average: nil, vote_count: nil, release_date: nil, first_air_date: nil,
                       editorialYear: year)
         self.year = year
         self.note = note

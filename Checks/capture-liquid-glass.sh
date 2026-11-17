@@ -44,3 +44,7 @@ xcrun simctl terminate "$device" com.akarukasu.cinescout
 xcrun simctl launch "$device" com.akarukasu.cinescout --classics
 sleep 4
 xcrun simctl io "$device" screenshot "$screenshots/A-redecouvrir-sombre.png"
+xcrun simctl terminate "$device" com.akarukasu.cinescout
+xcrun simctl launch "$device" com.akarukasu.cinescout --roulette
+sleep 3
+xcrun simctl io "$device" screenshot "$screenshots/Roulette-sombre.png"
