@@ -177,8 +177,8 @@ enum Roulette {
         }
     }
 
-    static func queries(formats: Set<RouletteFormat>, genres: Set<RouletteGenre>) -> [Query] {
-        let eras = [1900...1999, 2000...2014, 2015...2099]
+    static func queries(formats: Set<RouletteFormat>, genres: Set<RouletteGenre>, now: Date = .now) -> [Query] {
+        let eras = Era.allCases.map { $0.years(now: now) }
         var queries = Set<Query>()
         for format in formats {
             for kind in format.kinds {
