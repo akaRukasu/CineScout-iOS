@@ -339,6 +339,20 @@ struct RootView: View {
     @State private var tab = Tab.discover
 
     var body: some View {
+        Group {
+            if #available(iOS 26.0, *) {
+                tabs.tabBarMinimizeBehavior(.onScrollDown)
+            } else {
+                tabs
+            }
+        }
+        .task {
+            await model.refresh()
+            if !model.tmdbKey.isEmpty && model.discoveries.isEmpty { await model.discover() }
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $tab) {
             DiscoverView { tab = .settings }
                 .tabItem { Label("Découvrir", systemImage: "sparkles") }.tag(Tab.discover)
@@ -348,10 +362,6 @@ struct RootView: View {
                 .tabItem { Label("Envies", systemImage: "bookmark") }.tag(Tab.wishlist)
             SettingsView { tab = .discover }
                 .tabItem { Label("Réglages", systemImage: "gearshape") }.tag(Tab.settings)
-        }
-        .task {
-            await model.refresh()
-            if !model.tmdbKey.isEmpty && model.discoveries.isEmpty { await model.discover() }
         }
     }
 }

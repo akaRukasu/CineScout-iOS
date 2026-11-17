@@ -28,9 +28,9 @@ struct LibraryView: View {
             List {
                 Section {
                     HStack(spacing: 14) {
-                        JellyfinMark(size: 32)
+                        JellyfinMark(size: 40)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Jellyfin").font(.headline)
+                            Text("Jellyfin").font(.title2.bold())
                             if model.connected {
                                 Text("\(model.library.count.formatted()) titres synchronisés")
                                     .foregroundStyle(.secondary)
@@ -39,7 +39,7 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 10)
                     .accessibilityElement(children: .combine)
 
                     if model.syncing { ProgressView("Synchronisation…") }
@@ -48,7 +48,8 @@ struct LibraryView: View {
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                     if !model.connected && !model.syncing {
-                        Button("Configurer Jellyfin", action: openSettings)
+                        Button("Configurer Jellyfin", systemImage: "link", action: openSettings)
+                            .glassButtonStyle(prominent: true)
                     }
                 }
 
@@ -100,7 +101,7 @@ struct WishlistView: View {
                     } description: {
                         Text("Touche le marque-page d’un film ou d’une série pour le retrouver ici.")
                     } actions: {
-                        Button("Parcourir les titres", action: openDiscover).buttonStyle(.borderedProminent)
+                        Button("Parcourir les titres", action: openDiscover).glassButtonStyle(prominent: true)
                     }.listRowBackground(Color.clear)
                 }
                 ForEach(model.wishlist, id: \.key) { item in
@@ -122,7 +123,11 @@ struct WishlistView: View {
                     let removed = offsets.map { model.wishlist[$0] }
                     for item in removed { model.toggle(item) }
                 }
-            }.navigationTitle("Envies")
+            }
+            .navigationTitle("Envies")
+            .toolbar {
+                if !model.wishlist.isEmpty { EditButton() }
+            }
         }
     }
 }

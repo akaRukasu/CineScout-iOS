@@ -1,12 +1,19 @@
 name: Build iOS IPA
 on:
   workflow_dispatch:
+    inputs:
+      visual_check:
+        description: Capture iOS 26 simulator screenshots
+        type: boolean
+        default: false
   push:
     branches: [main]
 jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Check Seerr request flow and release dates
@@ -36,6 +43,8 @@ jobs:
           app=Payload/CineScout.app
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = com.akarukasu.cinescout
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          sdk="$(/usr/libexec/PlistBuddy -c 'Print :DTSDKName' "$app/Info.plist")"
+          [[ "$sdk" == iphoneos26.* ]]
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")"
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$app/Info.plist"
@@ -45,4 +54,13 @@ jobs:
         with:
           name: CineScout-unsigned-IPA
           path: CineScout-unsigned.ipa
+          if-no-files-found: error
+      - name: Capture Liquid Glass on iOS 26
+        if: github.event_name == 'workflow_dispatch' && inputs.visual_check
+        run: bash Checks/capture-liquid-glass.sh "$RUNNER_TEMP/cinescout-screenshots"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.visual_check
+        with:
+          name: CineScout-Liquid-Glass-iOS-26
+          path: ${{ runner.temp }}/cinescout-screenshots/*.png
           if-no-files-found: error

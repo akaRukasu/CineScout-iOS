@@ -1,6 +1,6 @@
 # CinéScout iOS
 
-Application native SwiftUI pour iOS 17 et versions ultérieures.
+Application native SwiftUI pour iOS 17 et versions ultérieures, avec Liquid Glass sur iOS 26.
 
 ## Première utilisation
 
@@ -29,4 +29,4 @@ Dans GitHub Actions, ouvrez **Build iOS IPA** et choisissez **Run workflow**. Le
 
 L’IPA pour iPhone est non signée. Sous Windows, [installez AltStore Classic avec AltServer](https://faq.altstore.io/altstore-classic/how-to-install-altstore-windows). Activez le **Mode développeur** sur l’iPhone, puis ouvrez **My Apps → +** dans AltStore Classic et sélectionnez l’IPA dans Fichiers. Gardez AltServer actif pendant l’installation. Avec un compte Apple gratuit, rafraîchissez la signature avant son expiration.
 
-Pour ouvrir le projet dans Xcode, installez XcodeGen et exécutez `xcodegen generate`. Sélectionnez votre équipe de signature et votre iPhone dans Xcode.
+Pour ouvrir le projet dans Xcode 26 ou plus récent, installez XcodeGen et exécutez `xcodegen generate`. Sélectionnez votre équipe de signature et votre iPhone dans Xcode.

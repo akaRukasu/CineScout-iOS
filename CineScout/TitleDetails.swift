@@ -79,52 +79,47 @@ struct DetailView: View {
             .subtracting(seerrMedia.blockedSeasons).filter { $0 > 0 }.sorted()
     }
 
+    private var canRequest: Bool {
+        requestStatus == nil && !model.seerrAddress.isEmpty && !checkingSeerr && seerrMedia != nil &&
+        (item.kind == "movie" || !availableSeasons.isEmpty)
+    }
+
     var body: some View {
+        detailWithControls
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle(item.display)
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: item.key) { await loadMetadata() }
+            .task(id: model.seerrRevision) { await checkSeerr() }
+            .sheet(isPresented: $showsSettings) {
+                NavigationStack {
+                    SeerrSettingsView().toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Fermer") { showsSettings = false } }
+                    }
+                }
+            }
+            .sheet(isPresented: $showsRequest) { requestSheet }
+    }
+
+    @ViewBuilder private var detailWithControls: some View {
+        if #available(iOS 26.0, *) {
+            detailScroll.safeAreaBar(edge: .bottom, spacing: 0) {
+                if canRequest { requestButton }
+            }
+        } else {
+            detailScroll.safeAreaInset(edge: .bottom, spacing: 0) {
+                if canRequest { requestButton.background(.regularMaterial) }
+            }
+        }
+    }
+
+    private var detailScroll: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 20)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(item.display).font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                    if let genres = metadata?.genres, !genres.isEmpty {
-                        Text(genres.map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
-                    }
-                    let attributes = [duration, item.vote_average.flatMap { score in
-                        score > 0 ? "\(score.formatted(.number.precision(.fractionLength(1)))) / 10" : nil
-                    }].compactMap { $0 }
-                    if !attributes.isEmpty {
-                        Text(attributes.joined(separator: " · ")).foregroundStyle(.secondary)
-                    }
-                }
-                .font(.subheadline)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    LabeledContent(item.kind == "tv" ? "Première diffusion" : "Date de sortie",
-                                   value: item.releaseDateText ?? "Date non annoncée")
-                    if model.owns(item) {
-                        Divider()
-                        Label("Dans ta bibliothèque Jellyfin", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    } else if item.kind == "movie" {
-                        Divider()
-                        TorrentIndicator(item: item, detailed: true)
-                    }
-                }
-                .font(.subheadline)
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
-
-                requestControl
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Synopsis").font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                    if let tagline = metadata?.tagline, !tagline.isEmpty {
-                        Text(tagline).font(.subheadline.italic()).foregroundStyle(.secondary)
-                    }
-                    Text([metadata?.overview, item.overview].compactMap { $0 }.first(where: { !$0.isEmpty }) ?? "Aucun synopsis disponible.")
-                        .foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 22) {
+                artwork
+                heading
+                availabilityPanel
+                synopsis
                 if let director = metadata?.credits?.crew?.first(where: { $0.job == "Director" }) {
                     LabeledContent("Réalisation", value: director.name).font(.subheadline)
                 }
@@ -135,36 +130,93 @@ struct DetailView: View {
                 } else if metadataError {
                     Button("Recharger les détails", systemImage: "arrow.clockwise") {
                         Task { await loadMetadata() }
-                    }.buttonStyle(.bordered)
+                    }.glassButtonStyle()
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(16)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
         }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(item.display)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    model.toggle(item)
-                } label: {
-                    Label(model.isWishlisted(item) ? "Retirer de mes envies" : "Ajouter à mes envies",
-                          systemImage: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
-                }
-            }
-        }
-        .task(id: item.key) { await loadMetadata() }
-        .task(id: model.seerrRevision) { await checkSeerr() }
-        .sheet(isPresented: $showsSettings) {
-            NavigationStack {
-                SeerrSettingsView().toolbar {
-                    ToolbarItem(placement: .confirmationAction) { Button("Fermer") { showsSettings = false } }
-                }
-            }
-        }
-        .sheet(isPresented: $showsRequest) { requestSheet }
     }
+
+    private var artwork: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 0)
+                .overlay {
+                    LinearGradient(colors: [.clear, .black.opacity(0.44)], startPoint: .center, endPoint: .bottom)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            ArtworkBookmarkButton(title: item.display, saved: model.isWishlisted(item)) {
+                model.toggle(item)
+            }
+            .padding(14)
+        }
+        .clipShape(.rect(cornerRadius: 28))
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.display).font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
+            if let genres = metadata?.genres, !genres.isEmpty {
+                Text(genres.map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
+            }
+            let attributes = [duration, item.vote_average.flatMap { score in
+                score > 0 ? "\(score.formatted(.number.precision(.fractionLength(1)))) / 10" : nil
+            }].compactMap { $0 }
+            if !attributes.isEmpty {
+                Text(attributes.joined(separator: " · ")).foregroundStyle(.secondary)
+            }
+        }
+        .font(.subheadline)
+    }
+
+    private var availabilityPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            LabeledContent(item.kind == "tv" ? "Première diffusion" : "Date de sortie",
+                           value: item.releaseDateText ?? "Date non annoncée")
+            if model.owns(item) {
+                Divider()
+                Label("Dans ta bibliothèque Jellyfin", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            } else if item.kind == "movie" {
+                Divider()
+                TorrentIndicator(item: item, detailed: true)
+            }
+            requestControl
+        }
+        .font(.subheadline)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
+    }
+
+    private var synopsis: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Synopsis").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            if let tagline = metadata?.tagline, !tagline.isEmpty {
+                Text(tagline).font(.subheadline.italic()).foregroundStyle(.secondary)
+            }
+            Text([metadata?.overview, item.overview].compactMap { $0 }.first(where: { !$0.isEmpty }) ?? "Aucun synopsis disponible.")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var requestButton: some View {
+        Button {
+            selectedSeasons = Set(availableSeasons)
+            showsRequest = true
+        } label: {
+            Label(item.kind == "tv" ? "Demander des saisons" : "Demander le film", systemImage: "paperplane.fill")
+                .frame(maxWidth: 480, minHeight: 28)
+        }
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .glassButtonStyle(prominent: true)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
     @ViewBuilder private var requestControl: some View {
         if let requestStatus {
             Label(requestStatus, systemImage: "paperplane.circle")
@@ -184,24 +236,16 @@ struct DetailView: View {
             if let seerrError { Text(seerrError).font(.footnote).foregroundStyle(.orange) }
         } else if model.seerrAddress.isEmpty {
             Button("Configurer Seerr", systemImage: "paperplane") { showsSettings = true }
-                .buttonStyle(.bordered)
+                .glassButtonStyle()
         } else if checkingSeerr {
             ProgressView("Vérification dans Seerr…")
-        } else if seerrMedia != nil && (item.kind == "movie" || !availableSeasons.isEmpty) {
-            Button {
-                selectedSeasons = Set(availableSeasons)
-                showsRequest = true
-            } label: {
-                Label(item.kind == "tv" ? "Demander des saisons" : "Demander le film", systemImage: "paperplane.fill")
-                    .frame(maxWidth: .infinity, minHeight: 30)
-            }.buttonStyle(.borderedProminent)
         } else if let seerrError {
             Text(seerrError).font(.footnote).foregroundStyle(.orange)
             HStack {
                 Button("Réessayer") { Task { await checkSeerr() } }
                 Button("Réglages Seerr") { showsSettings = true }
-            }.buttonStyle(.bordered)
-        } else if seerrMedia != nil {
+            }.glassButtonStyle()
+        } else if !canRequest && seerrMedia != nil {
             Text("Seerr ne propose aucune saison à demander.").font(.footnote).foregroundStyle(.secondary)
         }
     }

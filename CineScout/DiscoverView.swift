@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DiscoverView: View {
     @EnvironmentObject private var model: LibraryModel
+    @Environment(\.dynamicTypeSize) private var dynamicType
     let openSettings: () -> Void
     @State private var showsFilters = false
 
@@ -11,115 +12,177 @@ struct DiscoverView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
+            discoveryWithControls
+                .background(Color(uiColor: .systemGroupedBackground))
+                .navigationTitle("Découvrir")
+                .onChange(of: model.mediaType) { _, _ in
+                    model.genre = ""
+                    Task { await model.discover() }
+                }
+                .sheet(isPresented: $showsFilters) { DiscoveryFilters(model: model) }
+                .refreshable { await model.discover() }
+        }
+    }
+
+    @ViewBuilder private var discoveryWithControls: some View {
+        if #available(iOS 26.0, *) {
+            catalogue.safeAreaBar(edge: .top, spacing: 0) { catalogueBar }
+        } else {
+            catalogue.safeAreaInset(edge: .top, spacing: 0) {
+                catalogueBar.background(.regularMaterial)
+            }
+        }
+    }
+
+    private var catalogueBar: some View {
+        GlassControlGroup(spacing: 8) {
+            HStack(spacing: 8) {
+                if dynamicType.isAccessibilitySize {
                     Picker("Catalogue", selection: $model.mediaType) {
                         Text("Films").tag("movie")
                         Text("Séries").tag("tv")
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
+                    .glassButtonStyle()
                     .disabled(model.busy)
-                    .onChange(of: model.mediaType) { _, _ in
-                        model.genre = ""
-                        Task { await model.discover() }
-                    }
+                } else {
+                    scopeButton("Films", kind: "movie")
+                    scopeButton("Séries", kind: "tv")
+                }
+                Spacer(minLength: 4)
+                Button("Filtres", systemImage: "slider.horizontal.3") { showsFilters = true }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                    .glassButtonStyle()
+                    .disabled(model.busy || model.tmdbKey.isEmpty)
+            }
+            .controlSize(.large)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
+        }
+        .frame(maxWidth: 900)
+    }
 
-                    if let featured = suggestions.first {
-                        Text(model.personalized && model.genre.isEmpty && model.hasTasteProfile
-                             ? "Pour toi" : "À la une")
-                            .font(.title2.bold())
-                            .accessibilityAddTraits(.isHeader)
-                        featuredCard(featured)
-                    }
+    private func scopeButton(_ title: String, kind: String) -> some View {
+        let selected = model.mediaType == kind
+        return Button(title) { model.mediaType = kind }
+            .buttonBorderShape(.capsule)
+            .glassButtonStyle(prominent: selected)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .disabled(model.busy)
+    }
 
-                    if model.tmdbKey.isEmpty {
-                        ContentUnavailableView {
-                            Label("Découvrir des titres", systemImage: "sparkles.tv")
-                        } description: {
-                            Text("Connecte TMDb pour explorer les films et les séries.")
-                        } actions: {
-                            Button("Configurer TMDb", action: openSettings).buttonStyle(.borderedProminent)
-                        }
-                    } else if !model.discoveryMessage.isEmpty {
-                        Label(model.discoveryMessage, systemImage: "exclamationmark.circle")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Réessayer") { Task { await model.discover() } }
-                            .buttonStyle(.bordered)
-                    } else if suggestions.isEmpty {
-                        if model.busy {
-                            ProgressView("Recherche de titres…")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 40)
-                        } else {
-                            ContentUnavailableView("Aucun titre à proposer", systemImage: "film",
-                                                   description: Text("Essaie d’autres filtres ou affiche plus de titres."))
-                        }
-                    }
+    private var catalogue: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 22) {
+                if let featured = suggestions.first {
+                    Text(model.personalized && model.genre.isEmpty && model.hasTasteProfile
+                         ? "Pour toi" : "À la une")
+                        .font(.title2.bold())
+                        .accessibilityAddTraits(.isHeader)
+                    featuredCard(featured)
+                }
 
-                    if suggestions.count > 1 {
-                        Text("À explorer").font(.title2.bold().leading(.tight))
-                            .accessibilityAddTraits(.isHeader)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 16, alignment: .top)], spacing: 22) {
-                            ForEach(suggestions.dropFirst(), id: \.key, content: movieCard)
-                        }
-                    }
+                catalogueFeedback
 
-                    if model.hasMore && !model.tmdbKey.isEmpty {
-                        Button(model.busy ? "Chargement…" : "Afficher plus de titres") {
-                            Task { await model.discover(more: true) }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(model.busy)
-                        .frame(maxWidth: .infinity)
+                if suggestions.count > 1 {
+                    Text("À explorer").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 16, alignment: .top)], spacing: 22) {
+                        ForEach(suggestions.dropFirst(), id: \.key, content: movieCard)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Découvrir")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Filtres", systemImage: "slider.horizontal.3") { showsFilters = true }
-                        .disabled(model.busy || model.tmdbKey.isEmpty)
+
+                if model.hasMore && !model.tmdbKey.isEmpty {
+                    Button(model.busy ? "Chargement…" : "Afficher plus de titres") {
+                        Task { await model.discover(more: true) }
+                    }
+                    .glassButtonStyle()
+                    .disabled(model.busy)
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .sheet(isPresented: $showsFilters) { DiscoveryFilters(model: model) }
-            .refreshable { await model.discover() }
+            .padding(16)
+            .frame(maxWidth: 900)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder private var catalogueFeedback: some View {
+        if model.tmdbKey.isEmpty {
+            ContentUnavailableView {
+                Label("Découvrir des titres", systemImage: "sparkles.tv")
+            } description: {
+                Text("Connecte TMDb pour explorer les films et les séries.")
+            } actions: {
+                Button("Configurer TMDb", action: openSettings).glassButtonStyle(prominent: true)
+            }
+        } else if !model.discoveryMessage.isEmpty {
+            Label(model.discoveryMessage, systemImage: "exclamationmark.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button("Réessayer") { Task { await model.discover() } }
+                .glassButtonStyle()
+        } else if suggestions.isEmpty {
+            if model.busy {
+                ProgressView("Recherche de titres…")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else {
+                ContentUnavailableView("Aucun titre à proposer", systemImage: "film",
+                                       description: Text("Essaie d’autres filtres ou affiche plus de titres."))
+            }
         }
     }
 
     private func featuredCard(_ item: TMItem) -> some View {
-        NavigationLink { DetailView(item: item) } label: {
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottom) {
                 Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 0)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(item.display).font(.title2.bold())
-                        Spacer(minLength: 12)
-                        Image(systemName: "chevron.right").font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.tertiary).accessibilityHidden(true)
+                    .overlay {
+                        LinearGradient(colors: [.clear, .black.opacity(0.68)], startPoint: .center, endPoint: .bottom)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                     }
-                    metadata(item)
-                    if let overview = item.overview, !overview.isEmpty {
-                        Text(overview).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
+
+                GlassControlGroup {
+                    HStack(spacing: 10) {
+                        NavigationLink { DetailView(item: item) } label: {
+                            Label("Voir la fiche", systemImage: "arrow.right").font(.subheadline.weight(.semibold))
+                        }
+                        .controlSize(.large)
+                        .tint(.white)
+                        .glassButtonStyle()
+                        Spacer(minLength: 4)
+                        bookmark(for: item)
                     }
+                    .padding(14)
                 }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .environment(\.colorScheme, .dark)
             }
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(.rect(cornerRadius: 20))
+
+            VStack(alignment: .leading, spacing: 8) {
+                NavigationLink { DetailView(item: item) } label: {
+                    Text(item.display).font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                }
+                .buttonStyle(.plain)
+
+                metadata(item)
+                if let overview = item.overview, !overview.isEmpty {
+                    Text(overview).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
+        .clipShape(.rect(cornerRadius: 28))
     }
 
     private func movieCard(_ item: TMItem) -> some View {
         NavigationLink { DetailView(item: item) } label: {
             VStack(alignment: .leading, spacing: 7) {
-                Poster(path: item.poster_path)
+                Poster(path: item.poster_path, cornerRadius: 18)
                 Text(item.display).font(.headline).lineLimit(2)
                 metadata(item)
             }
@@ -128,19 +191,12 @@ struct DiscoverView: View {
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
-            Button { model.toggle(item) } label: {
-                Image(systemName: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(.black.opacity(0.65), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .padding(6)
-            .accessibilityLabel(model.isWishlisted(item)
-                                ? "Retirer \(item.display) de mes envies"
-                                : "Ajouter \(item.display) à mes envies")
+            bookmark(for: item).padding(7)
         }
+    }
+
+    private func bookmark(for item: TMItem) -> some View {
+        ArtworkBookmarkButton(title: item.display, saved: model.isWishlisted(item)) { model.toggle(item) }
     }
 
     private func metadata(_ item: TMItem) -> some View {
@@ -156,6 +212,7 @@ struct DiscoverView: View {
         .font(.caption)
     }
 }
+
 struct DiscoveryFilters: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var model: LibraryModel
