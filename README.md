@@ -4,16 +4,22 @@ Application native SwiftUI pour iOS 17 et versions ultérieures.
 
 ## Première utilisation
 
-1. Dans **Réglages**, connectez-vous à Jellyfin. Le serveur est prérempli. Dans **Jellyfin**, **Actualiser** relance la synchronisation.
-2. Dans les [réglages API de TMDb](https://www.themoviedb.org/settings/api), récupérez votre jeton de lecture ou votre clé API v3. Saisissez cette valeur dans **Réglages**, puis enregistrez.
+1. Dans **Réglages → Jellyfin**, connectez-vous à votre serveur. Le serveur est prérempli. Dans **Jellyfin**, **Actualiser** relance la synchronisation.
+2. Dans les [réglages API de TMDb](https://www.themoviedb.org/settings/api), récupérez votre jeton de lecture ou votre clé API v3. Saisissez cette valeur dans **Réglages → TMDb**, puis enregistrez.
 3. Dans **Découvrir**, choisissez films ou séries, appliquez vos filtres, puis explorez le catalogue. L’option **Selon mes goûts** utilise les genres de la bibliothèque, en donnant plus de poids aux titres vus, favoris ou ajoutés aux envies. Un genre choisi manuellement a priorité.
-4. Les titres sont comparés par type de média et identifiant TMDb. Un titre sans identifiant TMDb dans Jellyfin ne peut pas être rapproché automatiquement. Les envies restent sur l’appareil.
+4. Les films présents dans Jellyfin sont exclus de Découvrir et des suggestions similaires. Le rapprochement utilise le type de média et l’identifiant TMDb, ou le titre et l’année si Jellyfin n’a pas cet identifiant. Les envies restent sur l’appareil.
+
+Le logo Jellyfin identifie l’intégration. Il est fourni par le [projet Jellyfin](https://github.com/jellyfin/jellyfin-ux/blob/master/branding/SVG/icon-transparent.svg) sous [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 
 Le mot de passe Jellyfin sert à ouvrir la session. Le jeton Jellyfin et la clé TMDb sont conservés dans le trousseau iOS. CinéScout utilise TMDb et n’est ni approuvé ni certifié par TMDb.
 
+## Disponibilité via Prowlarr
+
+Dans **Réglages → Prowlarr**, entrez l’adresse HTTPS de l’instance et la clé API de **Prowlarr → Paramètres → Général**, puis touchez **Vérifier et enregistrer**. CinéScout consulte les indexeurs torrent pour les films affichés et indique les résultats correspondants ainsi que les seeders signalés. La clé reste dans le trousseau iOS. Les demandes continuent de passer par Seerr.
+
 ## Demandes Seerr
 
-Dans **Réglages → Demandes de films et séries**, indiquez l’adresse HTTPS de votre instance et la clé API affichée dans **Seerr → Paramètres → Général**. Utilisez **Vérifier et enregistrer** pour tester l’accès. La clé donne des droits administrateur et reste dans le trousseau iOS.
+Dans **Réglages → Seerr**, indiquez l’adresse HTTPS de votre instance et la clé API affichée dans **Seerr → Paramètres → Général**. Utilisez **Vérifier et enregistrer** pour tester l’accès. La clé donne des droits administrateur et reste dans le trousseau iOS.
 
 Ouvrez un titre pour consulter ses détails TMDb, sa distribution et les suggestions similaires. Demandez un film ou choisissez les saisons d’une série, puis confirmez. Les demandes utilisent le profil standard de Seerr et son statut d’approbation. Seerr doit déjà être configuré avec Radarr pour les films ou Sonarr pour les séries.
 

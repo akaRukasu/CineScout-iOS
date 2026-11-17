@@ -5,7 +5,7 @@ import Security
 struct CineScoutApp: App {
     @StateObject private var model = LibraryModel()
     var body: some Scene {
-        WindowGroup { RootView().environmentObject(model).preferredColorScheme(.dark) }
+        WindowGroup { RootView().environmentObject(model).environmentObject(model.torrents) }
     }
 }
 
@@ -25,45 +25,11 @@ enum Secrets {
     }
 }
 
-struct Media: Identifiable, Decodable {
-    let Id: String
-    let Name: String?
-    let mediaType: String?
-    enum CodingKeys: String, CodingKey {
-        case Id, Name, ProductionYear, Genres, UserData, ProviderIds
-        case mediaType = "Type"
-    }
-    let ProductionYear: Int?
-    let Genres: [String]?
-    let UserData: Playback?
-    struct Playback: Decodable { let Played: Bool?; let IsFavorite: Bool? }
-    let ProviderIds: [String: String]?
-    var id: String { Id }
-    var title: String { Name ?? "Sans titre" }
-}
 struct JellyfinItems: Decodable { let Items: [Media]; let TotalRecordCount: Int? }
 struct AuthResponse: Decodable {
     let AccessToken: String
     let User: Account
     struct Account: Decodable { let Id: String }
-}
-
-struct TMPage: Decodable { let results: [TMItem]; let total_pages: Int }
-struct TMItem: Identifiable, Codable {
-    let id: Int
-    let genre_ids: [Int]?
-    let backdrop_path: String?
-    var kind: String { title == nil ? "tv" : "movie" }
-    var key: String { "\(kind):\(id)" }
-    let title: String?
-    let name: String?
-    let overview: String?
-    let poster_path: String?
-    let vote_average: Double?
-    let release_date: String?
-    let first_air_date: String?
-    var display: String { title ?? name ?? "Sans titre" }
-    var releaseDateText: String? { ReleaseDate.french(kind == "tv" ? first_air_date : release_date) }
 }
 
 @MainActor
@@ -80,7 +46,7 @@ final class LibraryModel: ObservableObject {
     @Published var genre = ""
     @Published var minYear = ""
     @Published var minRating = 0.0
-    @Published var hideOwned = true
+    @Published var hideOwnedSeries = true
     @Published var maxYear = ""
     @Published var originalLanguage = ""
     @Published var sort = "popularity.desc"
@@ -97,6 +63,7 @@ final class LibraryModel: ObservableObject {
         return id
     }()
     @Published var tmdbKey = Secrets.get("tmdb")
+    let torrents = TorrentChecks()
     @Published private(set) var seerrAddress = UserDefaults.standard.string(forKey: "seerrAddress") ?? ""
     @Published private(set) var seerrRevision = 0
     private(set) var seerrKey = Secrets.get("seerrKey")
@@ -114,12 +81,25 @@ final class LibraryModel: ObservableObject {
     }
     private var token = Secrets.get("jellyfin")
     private var userId = UserDefaults.standard.string(forKey: "userId") ?? ""
-    @Published private(set) var owned = Set<String>()
+    @Published private var ownership = (try? JSONDecoder().decode(
+        LibraryOwnership.self, from: UserDefaults.standard.data(forKey: "jellyfinOwnership") ?? Data()
+    )) ?? LibraryOwnership()
     private var sessionServer = UserDefaults.standard.string(forKey: "sessionServer") ?? UserDefaults.standard.string(forKey: "server") ?? "https://akarukasu.astra.usbx.me/jellyfin"
     private var jellyfinAuthorization: String {
         "MediaBrowser Client=\"CineScout\", Device=\"iPhone\", DeviceId=\"\(deviceID)\", Version=\"1.0\""
     }
     var hasTasteProfile: Bool { !preferredGenres(for: mediaType).isEmpty }
+
+    func owns(_ item: TMItem) -> Bool { ownership.contains(item) }
+
+    func canSuggest(_ item: TMItem) -> Bool {
+        (item.kind == "tv" && !hideOwnedSeries) || !owns(item)
+    }
+
+    private func clearOwnership() {
+        ownership = LibraryOwnership()
+        UserDefaults.standard.removeObject(forKey: "jellyfinOwnership")
+    }
 
     private func preferredGenres(for kind: String) -> [Int] {
         let aliases: [String: Int] = [
@@ -190,7 +170,7 @@ final class LibraryModel: ObservableObject {
             let auth = try JSONDecoder().decode(AuthResponse.self, from: data)
             guard !auth.User.Id.isEmpty, !auth.AccessToken.isEmpty else { message = "Session Jellyfin invalide."; return }
             library = []
-            owned = []
+            clearOwnership()
             userId = auth.User.Id
             sessionServer = loginServer
             UserDefaults.standard.set(loginServer, forKey: "sessionServer")
@@ -215,7 +195,7 @@ final class LibraryModel: ObservableObject {
                     .init(name: "UserId", value: userId),
                     .init(name: "Recursive", value: "true"),
                     .init(name: "IncludeItemTypes", value: "Movie,Series"),
-                    .init(name: "Fields", value: "ProviderIds,Genres"),
+                    .init(name: "Fields", value: "ProviderIds,Genres,OriginalTitle"),
                     .init(name: "EnableUserData", value: "true"),
                     .init(name: "SortBy", value: "SortName"),
                     .init(name: "StartIndex", value: String(items.count)),
@@ -239,11 +219,10 @@ final class LibraryModel: ObservableObject {
                     (page.TotalRecordCount == nil && page.Items.count < 500) { break }
             }
             library = items
-            owned = Set(items.compactMap { item in
-                guard let id = item.ProviderIds?.first(where: { $0.key.caseInsensitiveCompare("Tmdb") == .orderedSame })?.value else { return nil }
-                let kind = item.mediaType == "Series" ? "tv" : "movie"
-                return "\(kind):\(id)"
-            })
+            ownership = LibraryOwnership(items)
+            if let data = try? JSONEncoder().encode(ownership) {
+                UserDefaults.standard.set(data, forKey: "jellyfinOwnership")
+            }
             connected = true
             message = ""
         } catch {
@@ -350,7 +329,7 @@ final class LibraryModel: ObservableObject {
         Secrets.set("", for: "jellyfin")
         connected = false
         library = []
-        owned = []
+        clearOwnership()
     }
 }
 
@@ -370,7 +349,6 @@ struct RootView: View {
             SettingsView { tab = .discover }
                 .tabItem { Label("Réglages", systemImage: "gearshape") }.tag(Tab.settings)
         }
-        .tint(Color(red: 0.73, green: 0.59, blue: 1))
         .task {
             await model.refresh()
             if !model.tmdbKey.isEmpty && model.discoveries.isEmpty { await model.discover() }
@@ -380,8 +358,9 @@ struct RootView: View {
 struct Poster: View {
     let path: String?
     var landscape = false
+    var cornerRadius: CGFloat = 14
     var body: some View {
-        Rectangle().fill(.white.opacity(0.08))
+        Rectangle().fill(Color(uiColor: .tertiarySystemFill))
             .aspectRatio(landscape ? 16.0/9 : 2.0/3, contentMode: .fit)
             .overlay {
                 AsyncImage(url: path.flatMap { URL(string: "https://image.tmdb.org/t/p/\(landscape ? "w780" : "w500")" + $0) }) { phase in
@@ -395,420 +374,7 @@ struct Poster: View {
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .accessibilityHidden(true)
-    }
-}
-struct DiscoverView: View {
-    @EnvironmentObject var model: LibraryModel
-    let openSettings: () -> Void
-    @State private var showsFilters = false
-
-    private var visible: [TMItem] {
-        model.discoveries.filter {
-            $0.kind == model.mediaType && (!model.hideOwned || !model.owned.contains($0.key))
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Picker("Catalogue", selection: $model.mediaType) {
-                        Text("Films").tag("movie")
-                        Text("Séries").tag("tv")
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(model.busy)
-                    .onChange(of: model.mediaType) { _, _ in
-                        model.genre = ""
-                        Task { await model.discover() }
-                    }
-
-                    if let featured = visible.first {
-                        Text(model.personalized && model.genre.isEmpty && model.hasTasteProfile
-                             ? "Sélection pour toi" : "À la une")
-                            .font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                        NavigationLink { DetailView(item: featured) } label: {
-                            Poster(path: featured.backdrop_path ?? featured.poster_path, landscape: true)
-                                .overlay(alignment: .bottomLeading) {
-                                    ZStack(alignment: .bottomLeading) {
-                                        LinearGradient(colors: [.clear, .black.opacity(0.95)], startPoint: .center, endPoint: .bottom)
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(featured.display).font(.title2.bold()).lineLimit(2)
-                                            Text([featured.kind == "tv" ? "Série" : "Film", featured.releaseDateText]
-                                                .compactMap { $0 }.joined(separator: " · "))
-                                                .font(.caption.weight(.medium))
-                                            if let overview = featured.overview, !overview.isEmpty {
-                                                Text(overview).font(.caption).lineLimit(2).foregroundStyle(.white.opacity(0.85))
-                                            }
-                                            Label("Voir la fiche", systemImage: "arrow.right.circle")
-                                                .font(.caption.bold()).padding(.top, 3)
-                                        }
-                                        .padding(16)
-                                    }
-                                }
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if model.tmdbKey.isEmpty {
-                        ContentUnavailableView {
-                            Label("Active la découverte", systemImage: "sparkles.tv")
-                        } description: {
-                            Text("Ajoute ta clé TMDb pour afficher les films et séries.")
-                        } actions: {
-                            Button("Configurer TMDb", action: openSettings).buttonStyle(.borderedProminent)
-                        }
-                    } else if visible.isEmpty {
-                        if model.busy {
-                            ProgressView("Recherche de titres…").frame(maxWidth: .infinity).padding(40)
-                        } else if model.discoveryMessage.isEmpty {
-                            ContentUnavailableView("Aucun titre à afficher", systemImage: "film",
-                                                   description: Text("Ajuste les filtres ou charge la suite du catalogue."))
-                        }
-                    }
-
-                    if !model.discoveryMessage.isEmpty && !model.tmdbKey.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label(model.discoveryMessage, systemImage: "exclamationmark.circle")
-                                .font(.subheadline).foregroundStyle(.orange)
-                            HStack {
-                                Button("Réessayer") { Task { await model.discover() } }
-                                Button("Réglages TMDb", action: openSettings)
-                            }.buttonStyle(.bordered)
-                        }
-                    }
-
-                    if visible.count > 1 {
-                        Text("À explorer").font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 142), spacing: 14, alignment: .top)], spacing: 18) {
-                            ForEach(visible.dropFirst(), id: \.key) { item in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    NavigationLink { DetailView(item: item) } label: {
-                                        VStack(alignment: .leading, spacing: 5) {
-                                            Poster(path: item.poster_path)
-                                            Text(item.display).font(.subheadline.weight(.semibold)).lineLimit(2)
-                                            if let release = item.releaseDateText {
-                                                Text(release).font(.caption).foregroundStyle(.secondary)
-                                            }
-                                            HStack {
-                                                if let score = item.vote_average, score > 0 {
-                                                    Label(score.formatted(.number.precision(.fractionLength(1))), systemImage: "star.fill")
-                                                }
-                                            }.font(.caption).foregroundStyle(.secondary)
-                                            if model.owned.contains(item.key) {
-                                                Label("Sur Jellyfin", systemImage: "checkmark.circle")
-                                                    .font(.caption2).foregroundStyle(.green)
-                                            }
-                                        }.frame(maxWidth: .infinity, alignment: .leading)
-                                    }.buttonStyle(.plain)
-                                }
-                                .overlay(alignment: .topTrailing) {
-                                    Button { model.toggle(item) } label: {
-                                        Image(systemName: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
-                                            .frame(width: 44, height: 44)
-                                            .background(.black.opacity(0.72), in: Circle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .padding(5)
-                                    .accessibilityLabel(model.isWishlisted(item) ? "Retirer de mes envies" : "Ajouter à mes envies")
-                                }
-                            }
-                        }
-                    }
-
-                    if model.hasMore && !model.tmdbKey.isEmpty {
-                        Button(model.busy ? "Chargement…" : "Voir plus de titres") {
-                            Task { await model.discover(more: true) }
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(model.busy)
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.bottom, 24)
-            }
-            .background(Color(red: 0.055, green: 0.065, blue: 0.10))
-            .navigationTitle("Découvrir")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showsFilters = true } label: {
-                        Label("Filtres", systemImage: "slider.horizontal.3")
-                    }
-                    .disabled(model.busy || model.tmdbKey.isEmpty)
-                }
-            }
-            .sheet(isPresented: $showsFilters) {
-                DiscoveryFilters(model: model)
-            }
-            .refreshable { await model.discover() }
-        }
-    }
-}
-
-struct DiscoveryFilters: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject var model: LibraryModel
-    @State private var genre: String
-    @State private var minYear: String
-    @State private var maxYear: String
-    @State private var minRating: Double
-    @State private var language: String
-    @State private var sort: String
-    @State private var personalized: Bool
-    @State private var hideOwned: Bool
-
-    init(model: LibraryModel) {
-        self.model = model
-        _genre = State(initialValue: model.genre)
-        _minYear = State(initialValue: model.minYear)
-        _maxYear = State(initialValue: model.maxYear)
-        _minRating = State(initialValue: model.minRating)
-        _language = State(initialValue: model.originalLanguage)
-        _sort = State(initialValue: model.sort)
-        _personalized = State(initialValue: model.personalized)
-        _hideOwned = State(initialValue: model.hideOwned)
-    }
-
-    private var genres: [(String, String)] {
-        let shared = [("Tous", ""), ("Comédie", "35"), ("Drame", "18"), ("Crime", "80"), ("Animation", "16"), ("Documentaire", "99")]
-        return shared + (model.mediaType == "tv"
-            ? [("Action et aventure", "10759"), ("Science-fiction et fantasy", "10765"), ("Mystère", "9648")]
-            : [("Action", "28"), ("Horreur", "27"), ("Thriller", "53"), ("Science-fiction", "878")])
-    }
-
-    private var validYears: Bool {
-        let from = minYear.isEmpty ? 1874 : Int(minYear) ?? 0
-        let until = maxYear.isEmpty ? 2100 : Int(maxYear) ?? 0
-        return (1874...2100).contains(from) && (from...2100).contains(until)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Catalogue") {
-                    Picker("Genre", selection: $genre) {
-                        ForEach(genres.indices, id: \.self) { index in
-                            Text(genres[index].0).tag(genres[index].1)
-                        }
-                    }
-                    Picker("Langue originale", selection: $language) {
-                        Text("Toutes").tag("")
-                        Text("Français").tag("fr")
-                        Text("Anglais").tag("en")
-                        Text("Japonais").tag("ja")
-                        Text("Coréen").tag("ko")
-                        Text("Espagnol").tag("es")
-                    }
-                    Picker("Trier par", selection: $sort) {
-                        Text("Popularité").tag("popularity.desc")
-                        Text("Note").tag("vote_average.desc")
-                        Text("Nombre de votes").tag("vote_count.desc")
-                    }
-                }
-                Section("Sortie et note") {
-                    TextField("Année de début", text: $minYear).keyboardType(.numberPad)
-                    TextField("Année de fin", text: $maxYear).keyboardType(.numberPad)
-                    LabeledContent("Note minimale", value: minRating == 0 ? "Toutes" : minRating.formatted())
-                    Slider(value: $minRating, in: 0...10, step: 0.5)
-                        .accessibilityLabel("Note minimale")
-                    if !validYears { Text("Entre deux années valides, dans l’ordre.").foregroundStyle(.orange) }
-                }
-                Section {
-                    Toggle("Selon mes goûts", isOn: $personalized).disabled(!genre.isEmpty)
-                    Toggle("Masquer les titres sur Jellyfin", isOn: $hideOwned)
-                } footer: {
-                    Text("Les suggestions utilisent tes goûts quand tu laisses le genre sur Tous.")
-                }
-                Button("Réinitialiser les filtres") {
-                    genre = ""; minYear = ""; maxYear = ""; minRating = 0
-                    language = ""; sort = "popularity.desc"; personalized = true; hideOwned = true
-                }
-            }
-            .navigationTitle("Filtres")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Appliquer") {
-                        model.genre = genre
-                        model.minYear = minYear
-                        model.maxYear = maxYear
-                        model.minRating = minRating
-                        model.originalLanguage = language
-                        model.sort = sort
-                        model.personalized = personalized
-                        model.hideOwned = hideOwned
-                        dismiss()
-                        Task { await model.discover() }
-                    }.disabled(!validYears || model.busy)
-                }
-            }
-        }
-    }
-}
-
-struct LibraryView: View {
-    @EnvironmentObject var model: LibraryModel
-    let openSettings: () -> Void
-    @State private var search = ""
-    var filtered: [Media] { model.library.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) } }
-    var body: some View {
-        NavigationStack {
-            List {
-                if model.syncing {
-                    ProgressView("Synchronisation de la bibliothèque…")
-                } else if !model.connected {
-                    ContentUnavailableView {
-                        Label("Connecte Jellyfin", systemImage: "play.rectangle.stack")
-                    } description: {
-                        Text("Retrouve ta bibliothèque et repère les titres déjà présents.")
-                    } actions: {
-                        Button("Configurer Jellyfin", action: openSettings).buttonStyle(.borderedProminent)
-                    }
-                    .listRowBackground(Color.clear)
-                } else if filtered.isEmpty {
-                    ContentUnavailableView(search.isEmpty ? "Bibliothèque vide" : "Aucun résultat", systemImage: "film")
-                        .listRowBackground(Color.clear)
-                }
-                if !model.message.isEmpty { Label(model.message, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(.orange) }
-                ForEach(filtered) { item in
-                    HStack {
-                        Image(systemName: item.mediaType == "Series" ? "tv" : "film").foregroundStyle(.purple)
-                        VStack(alignment: .leading) {
-                            Text(item.title)
-                            Text("\(item.ProductionYear.map(String.init) ?? "—") · \(item.mediaType ?? "")").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }.searchable(text: $search).navigationTitle("Ma bibliothèque")
-                .refreshable { await model.refresh() }
-                .toolbar {
-                    if model.connected {
-                        Button("Actualiser", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
-                            .disabled(model.syncing)
-                    }
-                }
-        }
-    }
-}
-struct WishlistView: View {
-    @EnvironmentObject var model: LibraryModel
-    let openDiscover: () -> Void
-    var body: some View {
-        NavigationStack {
-            List {
-                if model.wishlist.isEmpty {
-                    ContentUnavailableView {
-                        Label("Ta liste est vide", systemImage: "bookmark")
-                    } description: {
-                        Text("Touche le marque-page d’un film ou d’une série pour le retrouver ici.")
-                    } actions: {
-                        Button("Parcourir les titres", action: openDiscover).buttonStyle(.borderedProminent)
-                    }.listRowBackground(Color.clear)
-                }
-                ForEach(model.wishlist, id: \.key) { item in
-                    NavigationLink {
-                        DetailView(item: item)
-                    } label: {
-                        HStack(spacing: 14) {
-                            Poster(path: item.poster_path).frame(width: 44)
-                            VStack(alignment: .leading) {
-                                Text(item.display).font(.headline)
-                                Text([item.kind == "tv" ? "Série" : "Film", item.releaseDateText]
-                                    .compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                .onDelete { offsets in
-                    let removed = offsets.map { model.wishlist[$0] }
-                    for item in removed { model.toggle(item) }
-                }
-            }.navigationTitle("Ma liste")
-        }
-    }
-}
-struct SettingsView: View {
-    @EnvironmentObject var model: LibraryModel
-    let openDiscover: () -> Void
-    @State private var password = ""
-    @State private var tmdbDraft = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    if model.connected {
-                        Label("Jellyfin connecté", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        LabeledContent("Compte", value: model.username)
-                        LabeledContent("Titres synchronisés", value: model.library.count.formatted())
-                        Button("Se déconnecter", role: .destructive) { model.logout() }
-                            .disabled(model.busy)
-                    } else {
-                        TextField("Adresse du serveur", text: $model.server)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                        TextField("Nom d’utilisateur", text: $model.username)
-                            .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        SecureField("Mot de passe", text: $password).textContentType(.password)
-                        Button {
-                            Task {
-                                await model.login(password: password)
-                                if model.connected { password = "" }
-                            }
-                        } label: {
-                            if model.busy || model.syncing {
-                                ProgressView("Connexion à Jellyfin…")
-                            } else {
-                                Label("Se connecter à Jellyfin", systemImage: "arrow.right.circle")
-                            }
-                        }
-                        .disabled(model.busy || model.syncing || model.username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    if !model.message.isEmpty {
-                        Label(model.message, systemImage: "exclamationmark.circle").foregroundStyle(.orange)
-                    }
-                } header: {
-                    Text("Bibliothèque Jellyfin")
-                } footer: {
-                    Text("Utilise le compte avec lequel tu te connectes à Jellyfin.")
-                }
-
-                Section {
-                    SecureField("Clé API ou jeton de lecture", text: $tmdbDraft)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().focused($focused)
-                    Link("Obtenir une clé TMDb", destination: URL(string: "https://www.themoviedb.org/settings/api")!)
-                    Button {
-                        focused = false
-                        model.tmdbKey = tmdbDraft
-                        model.saveSettings()
-                        openDiscover()
-                        Task { await model.discover() }
-                    } label: {
-                        Label("Enregistrer et découvrir", systemImage: "sparkles")
-                    }
-                    .disabled(model.busy || tmdbDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                } header: {
-                    Text("Catalogue TMDb")
-                } footer: {
-                    Text("La clé permet d’explorer des films et séries en dehors de ta bibliothèque.")
-                }
-                Section("Demandes de films et séries") {
-                    NavigationLink {
-                        SeerrSettingsView()
-                    } label: {
-                        Label(model.seerrAddress.isEmpty ? "Configurer Seerr" : "Gérer la connexion Seerr",
-                              systemImage: "paperplane")
-                    }
-                }
-                Section { Text("Données TMDb · Application indépendante, non approuvée par TMDb.").font(.caption) }
-            }
-            .navigationTitle("Réglages")
-            .onAppear { tmdbDraft = model.tmdbKey }
-        }
     }
 }

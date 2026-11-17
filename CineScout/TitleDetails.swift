@@ -50,14 +50,14 @@ struct DetailView: View {
     private var related: [TMItem] {
         var seen: Set<String> = [item.key]
         let candidates = (metadata?.recommendations?.results ?? []) + (metadata?.similar?.results ?? [])
-        return Array(candidates.filter { seen.insert($0.key).inserted }.prefix(12))
+        return Array(candidates.filter { model.canSuggest($0) && seen.insert($0.key).inserted }.prefix(12))
     }
 
     private var requestStatus: String? {
         if let receipt { return receipt.label }
         if seerrMedia?.mediaInfo?.status == 6 { return "Titre bloqué dans Seerr" }
         if item.kind == "movie" {
-            if seerrMedia?.mediaInfo?.status == 5 || model.owned.contains(item.key) { return "Déjà disponible" }
+            if seerrMedia?.mediaInfo?.status == 5 || model.owns(item) { return "Déjà disponible" }
             if let request = seerrMedia?.mediaInfo?.requests?.first(where: { $0.is4k != true && [1, 2, 4].contains($0.status) }) {
                 if let id = request.id { return SeerrClient.Receipt(id: id, status: request.status).label }
                 return request.status == 4 ? "Demande en échec côté Seerr" : "Déjà demandé"
@@ -82,34 +82,46 @@ struct DetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                hero
-                VStack(alignment: .leading, spacing: 14) {
+                Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 20)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.display).font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
                     if let genres = metadata?.genres, !genres.isEmpty {
-                        Text(genres.map(\.name).joined(separator: "  ·  "))
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(.purple.opacity(0.95))
+                        Text(genres.map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
                     }
+                    let attributes = [duration, item.vote_average.flatMap { score in
+                        score > 0 ? "\(score.formatted(.number.precision(.fractionLength(1)))) / 10" : nil
+                    }].compactMap { $0 }
+                    if !attributes.isEmpty {
+                        Text(attributes.joined(separator: " · ")).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline)
+
+                VStack(alignment: .leading, spacing: 12) {
                     LabeledContent(item.kind == "tv" ? "Première diffusion" : "Date de sortie",
                                    value: item.releaseDateText ?? "Date non annoncée")
-                        .font(.subheadline)
-                    if model.owned.contains(item.key) {
+                    if model.owns(item) {
+                        Divider()
                         Label("Dans ta bibliothèque Jellyfin", systemImage: "checkmark.circle.fill")
-                            .font(.subheadline).foregroundStyle(.green)
+                            .foregroundStyle(.secondary)
+                    } else if item.kind == "movie" {
+                        Divider()
+                        TorrentIndicator(item: item, detailed: true)
                     }
-                    requestControl
-                    Button {
-                        model.toggle(item)
-                    } label: {
-                        Label(model.isWishlisted(item) ? "Dans mes envies" : "Ajouter à mes envies",
-                              systemImage: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
-                            .frame(maxWidth: .infinity, minHeight: 30)
-                    }
-                    .buttonStyle(.bordered)
                 }
-                if let tagline = metadata?.tagline, !tagline.isEmpty {
-                    Text(tagline).font(.title3.italic()).foregroundStyle(.secondary)
-                }
+                .font(.subheadline)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+
+                requestControl
+
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Synopsis").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+                    Text("Synopsis").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+                    if let tagline = metadata?.tagline, !tagline.isEmpty {
+                        Text(tagline).font(.subheadline.italic()).foregroundStyle(.secondary)
+                    }
                     Text([metadata?.overview, item.overview].compactMap { $0 }.first(where: { !$0.isEmpty }) ?? "Aucun synopsis disponible.")
                         .foregroundStyle(.secondary)
                 }
@@ -126,11 +138,22 @@ struct DetailView: View {
                     }.buttonStyle(.bordered)
                 }
             }
-            .padding(.horizontal, 16).padding(.bottom, 28)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
-        .background(Color(red: 0.045, green: 0.047, blue: 0.075))
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(item.display)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    model.toggle(item)
+                } label: {
+                    Label(model.isWishlisted(item) ? "Retirer de mes envies" : "Ajouter à mes envies",
+                          systemImage: model.isWishlisted(item) ? "bookmark.fill" : "bookmark")
+                }
+            }
+        }
         .task(id: item.key) { await loadMetadata() }
         .task(id: model.seerrRevision) { await checkSeerr() }
         .sheet(isPresented: $showsSettings) {
@@ -142,26 +165,6 @@ struct DetailView: View {
         }
         .sheet(isPresented: $showsRequest) { requestSheet }
     }
-
-    private var hero: some View {
-        Poster(path: item.backdrop_path ?? item.poster_path, landscape: true)
-            .overlay(alignment: .bottomLeading) {
-                ZStack(alignment: .bottomLeading) {
-                    LinearGradient(colors: [.clear, .black.opacity(0.98)], startPoint: .top, endPoint: .bottom)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.kind == "tv" ? "SÉRIE" : "FILM").font(.caption2.bold()).tracking(2.5)
-                        Text(item.display).font(.title.bold()).lineLimit(3)
-                        Text([duration,
-                              item.vote_average.flatMap { $0 > 0 ? "★ \($0.formatted(.number.precision(.fractionLength(1))))" : nil }]
-                            .compactMap { $0 }.joined(separator: "   ·   "))
-                            .font(.subheadline).foregroundStyle(.white.opacity(0.85))
-                    }.padding(16)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-            .accessibilityElement(children: .combine)
-    }
-
     @ViewBuilder private var requestControl: some View {
         if let requestStatus {
             Label(requestStatus, systemImage: "paperplane.circle")
@@ -239,7 +242,7 @@ struct DetailView: View {
 
     private func castRow(_ people: [TitleMetadata.Person]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Distribution").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+            Text("Distribution").font(.title2.bold()).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(people.prefix(10))) { person in
@@ -258,9 +261,9 @@ struct DetailView: View {
 
     private var relatedRow: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Dans le même esprit").font(.title3.bold()).accessibilityAddTraits(.isHeader)
+            Text("Dans le même esprit").font(.title2.bold()).accessibilityAddTraits(.isHeader)
             ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 12) {
+                LazyHStack(alignment: .top, spacing: 12) {
                     ForEach(related, id: \.key) { suggestion in
                         NavigationLink { DetailView(item: suggestion) } label: {
                             VStack(alignment: .leading, spacing: 5) {
@@ -269,10 +272,11 @@ struct DetailView: View {
                                 if let release = suggestion.releaseDateText {
                                     Text(release).font(.caption2).foregroundStyle(.secondary)
                                 }
-                                if model.owned.contains(suggestion.key) {
+                                TorrentIndicator(item: suggestion).font(.caption2)
+                                if model.owns(suggestion) {
                                     Label("Sur Jellyfin", systemImage: "checkmark.circle").font(.caption2).foregroundStyle(.green)
                                 }
-                            }.frame(width: 104)
+                            }.frame(width: 122, alignment: .leading)
                         }.buttonStyle(.plain)
                     }
                 }
