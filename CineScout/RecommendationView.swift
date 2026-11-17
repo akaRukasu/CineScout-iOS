@@ -27,28 +27,61 @@ struct RecommendationLinks: View {
     let openSettings: () -> Void
 
     var body: some View {
-        let layout = dynamicType.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 9))
-            : AnyLayout(HStackLayout(alignment: .top, spacing: 9))
-        layout {
-            ForEach(RecommendationSection.allCases) { section in
-                NavigationLink {
-                    RecommendationView(section: section, openSettings: openSettings)
-                } label: {
-                    VStack(spacing: 7) {
-                        Image(systemName: section.symbol)
-                            .font(.title3.weight(.semibold))
-                            .accessibilityHidden(true)
-                        Text(section.title)
-                            .font(.caption.weight(.semibold))
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .padding(.vertical, 4)
-                }
-                .buttonBorderShape(.roundedRectangle(radius: 18))
-                .glassButtonStyle()
+        if dynamicType.isAccessibilitySize {
+            VStack(spacing: 10) { destinations }
+        } else {
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) { destinations }
+                    .scrollTargetLayout()
             }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.viewAligned)
+        }
+    }
+
+    private var destinations: some View {
+        ForEach(RecommendationSection.allCases) { section in
+            NavigationLink {
+                RecommendationView(section: section, openSettings: openSettings)
+            } label: {
+                VStack(alignment: .leading, spacing: 16) {
+                    Image(systemName: section.symbol)
+                        .font(.title2.weight(.light)).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(section.title).font(.headline)
+                        Text(subtitle(section)).font(.caption).foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(width: dynamicType.isAccessibilitySize ? nil : 154, alignment: .leading)
+                .frame(maxWidth: dynamicType.isAccessibilitySize ? .infinity : nil, alignment: .leading)
+                .padding(18)
+                .background {
+                    LinearGradient(colors: [tint(section).opacity(0.8), tint(section).opacity(0.24)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .background(CinemaPalette.ink)
+                }
+                .clipShape(.rect(cornerRadius: 23))
+                .overlay { RoundedRectangle(cornerRadius: 23).strokeBorder(.white.opacity(0.12)) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func tint(_ section: RecommendationSection) -> Color {
+        switch section {
+        case .cinema: CinemaPalette.coral
+        case .streaming: Color.teal
+        case .classics: CinemaPalette.violet
+        }
+    }
+
+    private func subtitle(_ section: RecommendationSection) -> String {
+        switch section {
+        case .cinema: "Les sorties en France"
+        case .streaming: "Choisis ta plateforme"
+        case .classics: "Des œuvres et des regards"
         }
     }
 }

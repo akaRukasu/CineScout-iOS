@@ -84,6 +84,61 @@ enum Roulette {
     static let movieVotes = 50
     static let seriesVotes = 20
 
+    enum Era: Int, CaseIterable {
+        case classics, millennium, contemporary, recent
+
+        var weight: Double {
+            switch self {
+            case .classics, .recent: 0.2
+            case .millennium, .contemporary: 0.3
+            }
+        }
+
+        func years(now: Date) -> ClosedRange<Int> {
+            let year = Calendar(identifier: .gregorian).component(.year, from: now)
+            switch self {
+            case .classics: return 1900...1999
+            case .millennium: return 2000...2011
+            case .contemporary: return 2012...max(2012, year - 4)
+            case .recent: return max(2013, year - 3)...max(2013, year)
+            }
+        }
+    }
+
+    static func era(for item: TMItem, now: Date = .now) -> Era? {
+        guard let year = item.year else { return nil }
+        return Era.allCases.first { $0.years(now: now).contains(year) }
+    }
+
+    static func eraSchedule(count: Int, random: () -> Double = { Double.random(in: 0..<1) }) -> [Era] {
+        guard count > 0 else { return [] }
+        if count == 1 {
+            var cursor = min(max(random(), 0), 0.999_999)
+            for era in Era.allCases {
+                cursor -= era.weight
+                if cursor < 0 { return [era] }
+            }
+        }
+        var allocations = Era.allCases.map { (era: $0, number: Int(Double(count) * $0.weight)) }
+        let remaining = count - allocations.reduce(0) { $0 + $1.number }
+        let tieBreakers = allocations.indices.map { _ in random() }
+        let remainders = allocations.indices.sorted { lhs, rhs in
+            let left = Double(count) * allocations[lhs].era.weight - Double(allocations[lhs].number)
+            let right = Double(count) * allocations[rhs].era.weight - Double(allocations[rhs].number)
+            if left == right {
+                return tieBreakers[lhs] == tieBreakers[rhs] ? lhs < rhs : tieBreakers[lhs] < tieBreakers[rhs]
+            }
+            return left > right
+        }
+        for index in remainders.prefix(remaining) { allocations[index].number += 1 }
+        return allocations.flatMap { Array(repeating: $0.era, count: $0.number) }.shuffled()
+    }
+
+    static func reelPosition(elapsed: TimeInterval, duration: TimeInterval = 3.2) -> Double {
+        let fraction = min(1, max(0, elapsed / duration))
+        return 18 * (1 - pow(1 - fraction, 3))
+    }
+
     struct Query: Hashable {
         let kind: StreamingMedia
         let format: RouletteFormat
@@ -157,11 +212,27 @@ enum Roulette {
         return scores.sorted { $0.1 < $1.1 }.map(\.0)
     }
 
-    static func next(from candidates: [TMItem], after chosen: [TMItem], formats: Set<RouletteFormat>) -> TMItem? {
+    static func next(from candidates: [TMItem], after chosen: [TMItem], formats: Set<RouletteFormat>,
+                     schedule: [Era], now: Date = .now) -> TMItem? {
+        let target = schedule.dropFirst(chosen.count).first
+        let oldCount = chosen.filter { era(for: $0, now: now) == .classics }.count
+        let recentCount = chosen.filter { era(for: $0, now: now) == .recent }.count
+        let available = candidates.filter {
+            let era = era(for: $0, now: now)
+            if era == .classics { return oldCount < max(1, schedule.count / 5) }
+            if era == .recent { return recentCount < max(1, schedule.count / 3) }
+            return era != nil
+        }
+        let preferred = available.filter { era(for: $0, now: now) == target }
+        let middle = available.filter {
+            let era = era(for: $0, now: now)
+            return era == .millennium || era == .contemporary
+        }
+        let pool = !preferred.isEmpty ? preferred : !middle.isEmpty ? middle : available
         let usedYears = Set(chosen.compactMap(\.year))
         let usedDecades = Set(usedYears.map { $0 / 10 })
         let usedFormats = Set(chosen.compactMap { format(for: $0, in: formats) })
-        return candidates.enumerated().min { lhs, rhs in
+        return pool.enumerated().min { lhs, rhs in
             let left = diversity(lhs.element, usedYears: usedYears, usedDecades: usedDecades,
                                  usedFormats: usedFormats, formats: formats)
             let right = diversity(rhs.element, usedYears: usedYears, usedDecades: usedDecades,

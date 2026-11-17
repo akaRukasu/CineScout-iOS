@@ -48,3 +48,13 @@ xcrun simctl terminate "$device" com.akarukasu.cinescout
 xcrun simctl launch "$device" com.akarukasu.cinescout --roulette
 sleep 3
 xcrun simctl io "$device" screenshot "$screenshots/Roulette-sombre.png"
+xcrun simctl terminate "$device" com.akarukasu.cinescout
+xcrun simctl io "$device" recordVideo --codec=h264 "$screenshots/Roulette-animation.mp4" &
+recorder=$!
+xcrun simctl launch "$device" com.akarukasu.cinescout --roulette-motion
+sleep 2
+xcrun simctl io "$device" screenshot "$screenshots/Roulette-animation.png"
+sleep 6
+xcrun simctl io "$device" screenshot "$screenshots/Roulette-resultats.png"
+kill -INT "$recorder"
+wait "$recorder"

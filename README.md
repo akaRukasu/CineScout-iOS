@@ -21,7 +21,7 @@ Dans **Découvrir**, **Au cinéma** présente les sorties françaises des 35 der
 
 ## Roulette
 
-Dans **Découvrir → Roulette**, choisis **1**, **3**, **5** ou **10** suggestions, puis sélectionne un ou plusieurs formats et genres. Les notes et nombres de votes proviennent de TMDb. Le tirage privilégie les titres bien notés et répartit les choix entre les époques quand le catalogue le permet. L’historique local écarte les titres déjà tirés.
+Dans **Découvrir → Roulette**, choisis **1**, **3**, **5** ou **10** suggestions, puis sélectionne un ou plusieurs formats et genres. Les notes et nombres de votes proviennent de TMDb. Le tirage privilégie les titres bien notés. Sur dix choix, il vise deux classiques, six titres entre 2000 et les années récentes, et deux sorties des quatre dernières années. Si certaines périodes manquent de candidats, il limite les classiques à deux et les nouveautés à trois. Les affiches défilent, ralentissent et s’arrêtent sur le premier titre retenu. Le réglage Réduire les animations est pris en compte. L’historique local écarte les titres déjà tirés.
 
 Avant chaque tirage, CinéScout synchronise toutes les vues accessibles au compte Jellyfin, y compris les vues masquées, puis vérifie le catalogue global du même compte. Les identifiants TMDb, le titre et l’année ainsi que les identifiants IMDb et TVDb disponibles servent au rapprochement. Les dossiers auxquels le compte n’a pas accès restent hors de portée. Aucun tirage ne démarre si l’inventaire échoue.
 

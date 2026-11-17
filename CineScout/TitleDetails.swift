@@ -91,7 +91,7 @@ struct DetailView: View {
 
     var body: some View {
         detailWithControls
-            .background(Color(uiColor: .systemGroupedBackground))
+            .background { CinemaBackground() }
             .navigationTitle(item.display)
             .navigationBarTitleDisplayMode(.inline)
             .task(id: item.key) { await loadMetadata() }

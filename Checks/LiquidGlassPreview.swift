@@ -11,9 +11,9 @@ struct LiquidGlassPreview: App {
       {"id":157336,"title":"Interstellar","release_date":"2014-11-05","vote_average":8.5,
        "backdrop_path":"/xJHokMbljvjADYdit5fK5VQsXEG.jpg","poster_path":"/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
        "overview":"Une équipe d’explorateurs franchit un trou de ver pour chercher un nouveau foyer à l’humanité."},
-      {"id":693134,"title":"Dune : Deuxième partie","release_date":"2024-02-28",
+      {"id":693134,"title":"Dune : Deuxième partie","release_date":"2024-02-28","vote_average":8.2,
        "poster_path":"/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg"},
-      {"id":27205,"title":"Inception","release_date":"2010-07-21",
+      {"id":27205,"title":"Inception","release_date":"2010-07-21","vote_average":8.4,
        "poster_path":"/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg"}
     ]
     """.utf8))
@@ -29,7 +29,9 @@ struct LiquidGlassPreview: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if ProcessInfo.processInfo.arguments.contains("--roulette") {
+                if ProcessInfo.processInfo.arguments.contains("--roulette-motion") {
+                    RouletteMotionPreview(titles: Self.titles)
+                } else if ProcessInfo.processInfo.arguments.contains("--roulette") {
                     NavigationStack { RouletteView(openSettings: {}) }
                 } else if ProcessInfo.processInfo.arguments.contains("--catalog-search") {
                     CatalogSearchView(openSettings: {})
@@ -43,6 +45,41 @@ struct LiquidGlassPreview: App {
             }
             .environmentObject(model)
             .environmentObject(model.torrents)
+        }
+    }
+}
+
+private struct RouletteMotionPreview: View {
+    let titles: [TMItem]
+    @State private var phase = RoulettePhase.idle
+    @State private var winner: TMItem?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    RouletteStage(candidates: titles, winner: winner, phase: phase,
+                                  status: phase == .revealed ? "Tes découvertes" : "Les affiches défilent…")
+                    if phase == .revealed {
+                        Text("Tes prochaines découvertes").font(.title2.bold())
+                        ForEach(titles, id: \.key) { RouletteResultCard(item: $0) }
+                    }
+                }
+                .padding(16)
+            }
+            .background { CinemaBackground() }
+            .navigationTitle("Roulette")
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                phase = .spinning(.now)
+                do {
+                    try await Task.sleep(for: .seconds(3))
+                    winner = titles.first
+                    phase = .settling(.now)
+                    try await Task.sleep(for: .seconds(3.3))
+                    phase = .revealed
+                } catch {}
+            }
         }
     }
 }

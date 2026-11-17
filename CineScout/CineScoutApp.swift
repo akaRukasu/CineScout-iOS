@@ -383,9 +383,10 @@ struct Poster: View {
     let path: String?
     var landscape = false
     var cornerRadius: CGFloat = 14
+    var ratio: CGFloat? = nil
     var body: some View {
         Rectangle().fill(Color(uiColor: .tertiarySystemFill))
-            .aspectRatio(landscape ? 16.0/9 : 2.0/3, contentMode: .fit)
+            .aspectRatio(ratio ?? (landscape ? 16.0/9 : 2.0/3), contentMode: .fit)
             .overlay {
                 AsyncImage(url: path.flatMap { URL(string: "https://image.tmdb.org/t/p/\(landscape ? "w780" : "w500")" + $0) }) { phase in
                     if let image = phase.image {

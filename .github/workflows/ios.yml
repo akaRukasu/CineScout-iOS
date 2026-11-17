@@ -70,5 +70,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.visual_check
         with:
           name: CineScout-Liquid-Glass-iOS-26
-          path: ${{ runner.temp }}/cinescout-screenshots/*.png
+          path: |
+            ${{ runner.temp }}/cinescout-screenshots/*.png
+            ${{ runner.temp }}/cinescout-screenshots/*.mp4
           if-no-files-found: error

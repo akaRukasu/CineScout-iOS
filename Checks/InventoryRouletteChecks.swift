@@ -5,6 +5,7 @@ struct InventoryRouletteChecks {
     static func main() async throws {
         try await checkInventory()
         try checkDraw()
+        try checkEraBalance()
         print("Jellyfin per-view inventory, pagination, external IDs, roulette quality and diversity passed.")
     }
 
@@ -71,7 +72,7 @@ struct InventoryRouletteChecks {
         precondition(args["vote_count.gte"] == "50" && args["vote_average.gte"] == "6.8")
         precondition(args["primary_release_date.gte"] == "2015-01-01" && args["page"] == "3")
         let queries = Roulette.queries(formats: formats, genres: [.action, .fantasy])
-        precondition(Set(queries.map(\.years)).count == 3 && Set(queries.map(\.format)) == formats)
+        precondition(Set(queries.map(\.years)).count == 4 && Set(queries.map(\.format)) == formats)
         precondition(queries.allSatisfy { $0.genre != nil })
         precondition(!Roulette.canDraw(formats: [.series], genres: [.thriller]))
 
@@ -81,8 +82,63 @@ struct InventoryRouletteChecks {
         let history = Set(["movie:1"])
         precondition(!Roulette.rank(ranked, excluding: history).contains { $0.id == 1 })
         let alternative = Roulette.next(from: [candidates[1], candidates[2], candidates[3]],
-                                        after: [candidates[0]], formats: formats)
+                                        after: [candidates[0]], formats: formats,
+                                        schedule: [.classics, .millennium, .contemporary])
         precondition(alternative?.id == 3)
+    }
+
+    private static func checkEraBalance() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-11-17T12:00:00Z")!
+        var rows: [[String: Any]] = []
+        // Old titles deliberately dominate both volume and ratings.
+        for year in 1950...2026 {
+            rows.append(["id": year, "title": "Film \(year)", "release_date": "\(year)-01-01",
+                         "genre_ids": [28], "vote_average": year < 2000 ? 9.8 : 7.9, "vote_count": 2000])
+        }
+        let candidates = try JSONDecoder().decode([TMItem].self, from: JSONSerialization.data(withJSONObject: rows))
+        let formats: Set<RouletteFormat> = [.film]
+        let schedule = Roulette.eraSchedule(count: 10) { 0.5 }
+        let ranked = Roulette.rank(candidates, excluding: []) { 0.5 }
+        var result: [TMItem] = []
+        var remaining = ranked
+        while result.count < 10,
+              let next = Roulette.next(from: remaining, after: result, formats: formats, schedule: schedule, now: now) {
+            result.append(next)
+            remaining.removeAll { $0.key == next.key }
+        }
+        precondition(result.count == 10 && Set(result.map(\.key)).count == 10)
+        let counts = Dictionary(grouping: result, by: { Roulette.era(for: $0, now: now)! }).mapValues(\.count)
+        precondition(counts[.classics] == 2 && counts[.millennium] == 3)
+        precondition(counts[.contemporary] == 3 && counts[.recent] == 2)
+        precondition(Set(result.compactMap(\.year)).count >= 8)
+
+        let oldOnly = candidates.filter { ($0.year ?? 0) < 2000 }
+        var limited: [TMItem] = []
+        while let next = Roulette.next(from: oldOnly.filter { item in !limited.contains { $0.key == item.key } },
+                                       after: limited, formats: formats, schedule: schedule, now: now) {
+            limited.append(next)
+        }
+        precondition(limited.count == 2)
+        let recentOnly = candidates.filter { ($0.year ?? 0) >= 2023 }
+        var current: [TMItem] = []
+        while let next = Roulette.next(from: recentOnly.filter { item in !current.contains { $0.key == item.key } },
+                                       after: current, formats: formats, schedule: schedule, now: now) {
+            current.append(next)
+        }
+        precondition(current.count <= 3)
+
+        let singles = (0..<1000).compactMap { sample in
+            Roulette.eraSchedule(count: 1) { Double(sample) / 1000 }.first
+        }
+        precondition(singles.filter { $0 == .classics }.count == 200)
+        precondition(singles.filter { $0 == .millennium || $0 == .contemporary }.count == 600)
+        precondition(Roulette.reelPosition(elapsed: 0) == 0)
+        precondition(Roulette.reelPosition(elapsed: 3.2) == 18)
+        precondition(Roulette.reelPosition(elapsed: 6) == 18)
+        precondition(Roulette.reelPosition(elapsed: 1) > 0 && Roulette.reelPosition(elapsed: 1) < 18)
+        let startSpeed = Roulette.reelPosition(elapsed: 0.2) - Roulette.reelPosition(elapsed: 0.1)
+        let endSpeed = Roulette.reelPosition(elapsed: 3.1) - Roulette.reelPosition(elapsed: 3)
+        precondition(startSpeed > endSpeed)
     }
 
     private static func decode<T: Decodable>(_ json: String) throws -> T {

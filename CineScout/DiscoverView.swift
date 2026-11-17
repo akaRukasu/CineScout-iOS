@@ -14,7 +14,7 @@ struct DiscoverView: View {
     var body: some View {
         NavigationStack {
             discoveryWithControls
-                .background(Color(uiColor: .systemGroupedBackground))
+                .background { CinemaBackground() }
                 .navigationTitle("Découvrir")
                 .navigationBarTitleDisplayMode(.inline)
                 .onChange(of: model.mediaType) { _, _ in
@@ -94,12 +94,9 @@ struct DiscoverView: View {
                 NavigationLink {
                     RouletteView(openSettings: openSettings)
                 } label: {
-                    Label("Roulette", systemImage: "die.face.5")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                    RouletteEntryCard(artwork: Array(suggestions.prefix(3)))
                 }
-                .controlSize(.large)
-                .glassButtonStyle(prominent: true)
+                .buttonStyle(.plain)
 
                 RecommendationLinks(openSettings: openSettings)
 
@@ -155,19 +152,30 @@ struct DiscoverView: View {
     }
 
     private func featuredCard(_ item: TMItem) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .bottom) {
-                Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 0)
-                    .overlay {
-                        LinearGradient(colors: [.clear, .black.opacity(0.68)], startPoint: .center, endPoint: .bottom)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                    }
-
+        ZStack(alignment: .bottomLeading) {
+            Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 0, ratio: 1.02)
+                .overlay {
+                    LinearGradient(stops: [.init(color: .black.opacity(0.06), location: 0),
+                                           .init(color: .black.opacity(0.15), location: 0.34),
+                                           .init(color: .black.opacity(0.95), location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+            VStack(alignment: .leading, spacing: 11) {
+                Text(item.display).font(.largeTitle.bold()).lineLimit(3)
+                    .accessibilityAddTraits(.isHeader)
+                HStack(spacing: 9) {
+                    CinemaScore(item: item)
+                    Text([item.kindLabel, item.year.map(String.init)].compactMap { $0 }.joined(separator: " · "))
+                        .font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.85))
+                }
+                if let overview = item.overview, !overview.isEmpty {
+                    Text(overview).font(.subheadline).foregroundStyle(.white.opacity(0.78)).lineLimit(2)
+                }
                 GlassControlGroup {
                     HStack(spacing: 10) {
                         NavigationLink { DetailView(item: item) } label: {
-                            Label("Voir la fiche", systemImage: "arrow.right").font(.subheadline.weight(.semibold))
+                            Label("Découvrir le titre", systemImage: "arrow.right")
+                                .font(.subheadline.bold())
                         }
                         .controlSize(.large)
                         .tint(.white)
@@ -175,33 +183,22 @@ struct DiscoverView: View {
                         Spacer(minLength: 4)
                         bookmark(for: item)
                     }
-                    .padding(14)
                 }
-                .environment(\.colorScheme, .dark)
+                .padding(.top, 3)
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                NavigationLink { DetailView(item: item) } label: {
-                    Text(item.display).font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                }
-                .buttonStyle(.plain)
-
-                metadata(item)
-                if let overview = item.overview, !overview.isEmpty {
-                    Text(overview).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(.white)
+            .padding(22)
+            .environment(\.colorScheme, .dark)
         }
-        .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(.rect(cornerRadius: 28))
+        .clipShape(.rect(cornerRadius: 30))
+        .overlay { RoundedRectangle(cornerRadius: 30).strokeBorder(.white.opacity(0.1)) }
     }
 
     private func movieCard(_ item: TMItem) -> some View {
         NavigationLink { DetailView(item: item) } label: {
             VStack(alignment: .leading, spacing: 7) {
                 Poster(path: item.poster_path, cornerRadius: 18)
+                    .overlay(alignment: .bottomLeading) { CinemaScore(item: item).padding(8) }
                 Text(item.display).font(.headline).lineLimit(2)
                 metadata(item)
             }
