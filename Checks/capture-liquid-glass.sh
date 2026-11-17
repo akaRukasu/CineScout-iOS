@@ -23,7 +23,7 @@ xcodebuild -project CineScout.xcodeproj -scheme CineScout -configuration Debug \
 xcrun simctl bootstatus "$device" -b
 xcrun simctl install "$device" build/Build/Products/Debug-iphonesimulator/CineScout.app
 xcrun simctl status_bar "$device" override --time 9:41 --dataNetwork wifi --wifiMode active \
-  --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState unplugged --batteryLevel 100
+  --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState discharging --batteryLevel 100
 
 xcrun simctl ui "$device" appearance light
 xcrun simctl launch "$device" com.akarukasu.cinescout
