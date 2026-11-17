@@ -9,6 +9,7 @@ on:
         options:
           - macos-15
           - macos-15-intel
+          - macos-26
       visual_check:
         description: Capture iOS 26 simulator screenshots
         type: boolean
