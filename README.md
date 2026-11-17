@@ -13,6 +13,12 @@ Le logo Jellyfin identifie l’intégration. Il est fourni par le [projet Jellyf
 
 Le mot de passe Jellyfin sert à ouvrir la session. Le jeton Jellyfin et la clé TMDb sont conservés dans le trousseau iOS. CinéScout utilise TMDb et n’est ni approuvé ni certifié par TMDb.
 
+## Recherche et sélections
+
+Dans **Rechercher**, saisis le titre français ou original et choisis **Tout**, **Films**, **Séries** ou **Animes**. La recherche inclut aussi les titres présents dans Jellyfin.
+
+Dans **Découvrir**, **Au cinéma** présente les sorties françaises des 35 derniers jours et **En streaming** permet de filtrer par plateforme. Les fiches détaillent les offres en France par type. Les disponibilités proviennent de JustWatch via TMDb. **À redécouvrir** présente des titres plus anciens, des notes de CinéScout et des liens vers les critiques publiées.
+
 ## Disponibilité via Prowlarr
 
 Dans **Réglages → Prowlarr**, entrez l’adresse HTTPS de l’instance et la clé API de **Prowlarr → Paramètres → Général**, puis touchez **Vérifier et enregistrer**. CinéScout consulte les indexeurs torrent pour les films affichés et indique les résultats correspondants ainsi que les seeders signalés. La clé reste dans le trousseau iOS. Les demandes continuent de passer par Seerr.

@@ -36,3 +36,11 @@ xcrun simctl terminate "$device" com.akarukasu.cinescout
 xcrun simctl launch "$device" com.akarukasu.cinescout --detail
 sleep 6
 xcrun simctl io "$device" screenshot "$screenshots/Fiche-sombre.png"
+xcrun simctl terminate "$device" com.akarukasu.cinescout
+xcrun simctl launch "$device" com.akarukasu.cinescout --catalog-search
+sleep 3
+xcrun simctl io "$device" screenshot "$screenshots/Recherche-sombre.png"
+xcrun simctl terminate "$device" com.akarukasu.cinescout
+xcrun simctl launch "$device" com.akarukasu.cinescout --classics
+sleep 4
+xcrun simctl io "$device" screenshot "$screenshots/A-redecouvrir-sombre.png"

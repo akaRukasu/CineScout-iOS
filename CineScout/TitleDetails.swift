@@ -7,6 +7,11 @@ struct TitleMetadata: Decodable {
     let number_of_episodes: Int?
     let tagline: String?
     let overview: String?
+    let backdrop_path: String?
+    let poster_path: String?
+    let release_date: String?
+    let first_air_date: String?
+    let vote_average: Double?
     let credits: Credits?
     let recommendations: TMPage?
     let similar: TMPage?
@@ -119,7 +124,13 @@ struct DetailView: View {
                 artwork
                 heading
                 availabilityPanel
-                synopsis
+                TitleWatchOptions(item: item)
+                if let pick = EditorialPick.selection.first(where: { $0.id == item.key }) {
+                    editorialNote(pick)
+                }
+                if let overview = [metadata?.overview, item.overview].compactMap({ $0 }).first(where: { !$0.isEmpty }) {
+                    synopsis(overview)
+                }
                 if let director = metadata?.credits?.crew?.first(where: { $0.job == "Director" }) {
                     LabeledContent("Réalisation", value: director.name).font(.subheadline)
                 }
@@ -141,7 +152,8 @@ struct DetailView: View {
 
     private var artwork: some View {
         ZStack(alignment: .bottomTrailing) {
-            Poster(path: item.backdrop_path ?? item.poster_path, landscape: true, cornerRadius: 0)
+            Poster(path: metadata?.backdrop_path ?? item.backdrop_path ?? metadata?.poster_path ?? item.poster_path,
+                   landscape: true, cornerRadius: 0)
                 .overlay {
                     LinearGradient(colors: [.clear, .black.opacity(0.44)], startPoint: .center, endPoint: .bottom)
                         .allowsHitTesting(false)
@@ -161,7 +173,7 @@ struct DetailView: View {
             if let genres = metadata?.genres, !genres.isEmpty {
                 Text(genres.map(\.name).joined(separator: " · ")).foregroundStyle(.secondary)
             }
-            let attributes = [duration, item.vote_average.flatMap { score in
+            let attributes = [duration, (metadata?.vote_average ?? item.vote_average).flatMap { score in
                 score > 0 ? "\(score.formatted(.number.precision(.fractionLength(1)))) / 10" : nil
             }].compactMap { $0 }
             if !attributes.isEmpty {
@@ -174,7 +186,8 @@ struct DetailView: View {
     private var availabilityPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             LabeledContent(item.kind == "tv" ? "Première diffusion" : "Date de sortie",
-                           value: item.releaseDateText ?? "Date non annoncée")
+                           value: ReleaseDate.french(item.kind == "tv" ? metadata?.first_air_date : metadata?.release_date)
+                           ?? item.releaseDateText ?? item.editorialYear.map(String.init) ?? "Date non annoncée")
             if model.owns(item) {
                 Divider()
                 Label("Dans ta bibliothèque Jellyfin", systemImage: "checkmark.circle.fill")
@@ -191,13 +204,24 @@ struct DetailView: View {
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
     }
 
-    private var synopsis: some View {
+    private func editorialNote(_ pick: EditorialPick) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Le regard de CinéScout").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            Text(pick.note).foregroundStyle(.secondary)
+            Link(destination: pick.article) {
+                Label("Lire l’analyse · \(pick.critic)", systemImage: "arrow.up.right")
+            }
+            .glassButtonStyle()
+        }
+    }
+
+    private func synopsis(_ overview: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Synopsis").font(.title2.bold()).accessibilityAddTraits(.isHeader)
             if let tagline = metadata?.tagline, !tagline.isEmpty {
                 Text(tagline).font(.subheadline.italic()).foregroundStyle(.secondary)
             }
-            Text([metadata?.overview, item.overview].compactMap { $0 }.first(where: { !$0.isEmpty }) ?? "Aucun synopsis disponible.")
+            Text(overview)
                 .foregroundStyle(.secondary)
         }
     }

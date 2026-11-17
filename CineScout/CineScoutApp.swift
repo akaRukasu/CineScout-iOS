@@ -292,6 +292,12 @@ final class LibraryModel: ObservableObject {
         return try await fetchTMDb(parts, key: tmdbKey)
     }
 
+    func catalog<T: Decodable>(_ endpoint: URLComponents) async throws -> T {
+        let key = tmdbKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { throw TMDbError(message: "Configure TMDb dans Réglages.") }
+        return try await fetchTMDb(endpoint, key: key)
+    }
+
     private func fetchTMDb<T: Decodable>(_ endpoint: URLComponents, key: String) async throws -> T {
         var parts = endpoint
         let legacyKey = key.count == 32 && key.allSatisfy(\.isHexDigit)
@@ -334,7 +340,7 @@ final class LibraryModel: ObservableObject {
 }
 
 struct RootView: View {
-    enum Tab: Hashable { case discover, library, wishlist, settings }
+    enum Tab: Hashable { case discover, library, wishlist, settings, search }
     @EnvironmentObject var model: LibraryModel
     @State private var tab = Tab.discover
 
@@ -362,6 +368,8 @@ struct RootView: View {
                 .tabItem { Label("Envies", systemImage: "bookmark") }.tag(Tab.wishlist)
             SettingsView { tab = .discover }
                 .tabItem { Label("Réglages", systemImage: "gearshape") }.tag(Tab.settings)
+            CatalogSearchView { tab = .settings }
+                .tabItem { Label("Rechercher", systemImage: "magnifyingglass") }.tag(Tab.search)
         }
     }
 }

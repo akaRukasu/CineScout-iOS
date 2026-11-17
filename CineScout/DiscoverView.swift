@@ -91,6 +91,8 @@ struct DiscoverView: View {
                     featuredCard(featured)
                 }
 
+                RecommendationLinks(openSettings: openSettings)
+
                 catalogueFeedback
 
                 if suggestions.count > 1 {

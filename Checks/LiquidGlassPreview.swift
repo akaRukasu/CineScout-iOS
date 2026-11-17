@@ -21,14 +21,19 @@ struct LiquidGlassPreview: App {
     init() {
         let fixture = LibraryModel()
         fixture.discoveries = Self.titles
-        fixture.tmdbKey = showsDetail ? "" : "simulator-fixture"
+        fixture.tmdbKey = showsDetail || ProcessInfo.processInfo.arguments.contains("--classics")
+            ? "" : "simulator-fixture"
         _model = StateObject(wrappedValue: fixture)
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if showsDetail {
+                if ProcessInfo.processInfo.arguments.contains("--catalog-search") {
+                    CatalogSearchView(openSettings: {})
+                } else if ProcessInfo.processInfo.arguments.contains("--classics") {
+                    NavigationStack { RecommendationView(section: .classics, openSettings: {}) }
+                } else if showsDetail {
                     NavigationStack { DetailView(item: Self.titles[0]) }
                 } else {
                     RootView()
